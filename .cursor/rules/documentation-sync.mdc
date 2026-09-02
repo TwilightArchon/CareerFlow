@@ -1,0 +1,16 @@
+---
+description: Keep CareerFlow implementation and feature documentation synchronized
+globs:
+alwaysApply: true
+---
+
+# Documentation-first changes
+
+- Read `AGENTS.md` and `docs/INDEX.md` before modifying the repository.
+- Read the relevant `docs/features/*.md` files before changing a capability.
+- If a new capability has no document, create one from `docs/templates/FEATURE.md` first and add it to `docs/INDEX.md`.
+- Update feature docs in the same change when behavior, schemas, states, errors, approvals, tests, or security boundaries change.
+- Update `docs/ARCHITECTURE.md` for component or data-flow changes.
+- Update `TODO.md` only when completion is supported by verification evidence.
+- If documentation and implementation disagree, reconcile them before completing the task.
+

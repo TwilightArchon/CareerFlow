@@ -1,0 +1,75 @@
+{
+  "name": "@careerflow/desktop",
+  "version": "0.1.5",
+  "private": true,
+  "type": "module",
+  "main": "out/main/index.js",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "package:mac": "pnpm --workspace-root runtime:prepare && pnpm --workspace-root build && electron-builder --mac dmg --arm64 && pnpm --workspace-root package:verify"
+  },
+  "dependencies": {
+    "@careerflow/browser-worker": "workspace:*",
+    "@careerflow/contracts": "workspace:*",
+    "@opentelemetry/api": "^1.9.0",
+    "@opentelemetry/exporter-trace-otlp-http": "^0.204.0",
+    "@opentelemetry/resources": "^2.0.1",
+    "@opentelemetry/sdk-node": "^0.204.0",
+    "@opentelemetry/semantic-conventions": "^1.37.0",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1"
+  },
+  "devDependencies": {
+    "@types/node": "^24.3.0",
+    "@types/react": "^19.1.12",
+    "@types/react-dom": "^19.1.9",
+    "@vitejs/plugin-react": "^5.0.2",
+    "electron": "^38.0.0",
+    "electron-builder": "^26.0.12",
+    "electron-vite": "^4.0.0",
+    "typescript": "^5.9.2",
+    "vite": "^7.1.4",
+    "vitest": "^3.2.4"
+  },
+  "build": {
+    "appId": "dev.careerflow.desktop",
+    "productName": "CareerFlow",
+    "asar": true,
+    "mac": {
+      "category": "public.app-category.productivity",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64"
+          ]
+        }
+      ],
+      "hardenedRuntime": false,
+      "gatekeeperAssess": false,
+      "identity": null
+    },
+    "files": [
+      "out/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "runtime/python-runtime",
+        "to": "python-runtime"
+      },
+      {
+        "from": "../../services/agent",
+        "to": "agent-service",
+        "filter": [
+          "src/**/*",
+          "pyproject.toml",
+          "uv.lock"
+        ]
+      }
+    ]
+  }
+}

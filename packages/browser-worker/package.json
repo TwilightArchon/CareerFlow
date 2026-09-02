@@ -1,0 +1,28 @@
+{
+  "name": "@careerflow/browser-worker",
+  "version": "0.1.5",
+  "private": true,
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsup src/index.ts --format esm --platform node --sourcemap --clean",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@careerflow/contracts": "workspace:*",
+    "@opentelemetry/api": "^1.9.0",
+    "@opentelemetry/exporter-trace-otlp-http": "^0.204.0",
+    "@opentelemetry/resources": "^2.0.1",
+    "@opentelemetry/sdk-node": "^0.204.0",
+    "@opentelemetry/semantic-conventions": "^1.37.0",
+    "playwright-core": "^1.55.0",
+    "ws": "^8.18.3"
+  },
+  "devDependencies": {
+    "@types/node": "^24.3.0",
+    "@types/ws": "^8.18.1",
+    "tsup": "^8.5.0",
+    "vitest": "^3.2.4"
+  }
+}
