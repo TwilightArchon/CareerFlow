@@ -625,7 +625,8 @@ form > label:first-child {
   text-transform: capitalize;
 }
 .run-state.awaiting_human,
-.run-state.outcome_uncertain {
+.run-state.outcome_uncertain,
+.run-state.paused {
   color: #8a5a16;
   background: #f8ecd2;
 }
@@ -643,6 +644,30 @@ form > label:first-child {
   display: grid;
   justify-items: end;
   gap: 8px;
+}
+.run-controls {
+  display: flex;
+  gap: 6px;
+}
+.run-controls button {
+  border: 1px solid #cfd7d1;
+  border-radius: 7px;
+  padding: 5px 8px;
+  color: #315c4c;
+  background: #f8faf8;
+  font-size: 10px;
+  font-weight: 700;
+}
+.run-controls .cancel-control {
+  color: #8b4b43;
+  border-color: #e2c8c4;
+  background: #fff8f6;
+}
+.run-control-error {
+  max-width: none !important;
+  margin-top: 10px !important;
+  overflow: visible !important;
+  white-space: normal !important;
 }
 .field-detail-button {
   border: 0;

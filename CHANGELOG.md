@@ -2,6 +2,19 @@
 
 All notable CareerFlow changes are documented here.
 
+## 0.1.10 — 2026-09-03
+
+### Added
+
+- Added explicit `paused` workflow state, durable pre-pause checkpoints, checkpoint-backed resume, and confirmed cancellation controls in the queue and Applications view.
+- Added authenticated typed run-control IPC/API commands with idempotent duplicate handling and a checkpoint inspection endpoint.
+- Added per-run browser-worker pause/cancel gates and synthetic-form rescanning after resume.
+- Added regression coverage for checkpoint persistence, duplicate pause requests, stale transition rejection, resume, cancellation outcomes, and permanent browser cancellation gates.
+
+### Security
+
+- Late browser results cannot transition paused, cancelled, or outcome-complete runs, and a cancelled run ID cannot be resumed in the browser worker.
+
 ## 0.1.9 — 2026-09-03
 
 ### Added

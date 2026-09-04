@@ -38,7 +38,7 @@ A Python FastAPI service with Pydantic schemas coordinates explicit application 
 ### Storage
 
 - Operating-system keychain: passwords, OAuth refresh tokens, encryption keys.
-- SQLite through SQLAlchemy and Alembic: workflow events, checkpoints, application indexes, field-level mapping/policy explanations, append-only outcome revisions, and non-sensitive metadata. Field explanation and outcome rows deliberately omit candidate values and free-form application answers.
+- SQLite through SQLAlchemy and Alembic: workflow events, resumable checkpoints, application indexes, field-level mapping/policy explanations, append-only outcome revisions, and non-sensitive metadata. Checkpoints store workflow state and idempotency metadata only; field explanation and outcome rows deliberately omit candidate values and free-form application answers.
 - AES-256-GCM encrypted payloads and artifacts: candidate facts, answers, resumes, source documents, and model snapshots.
 - Artifact storage: resumes, source documents, screenshots, and confirmation evidence, encrypted at rest.
 - PostgreSQL and Redis are explicitly deferred. Portfolio scalability means isolated local execution across installations, not centralized browser concurrency.
@@ -63,6 +63,7 @@ OpenTelemetry SDKs in TypeScript and Python propagate W3C trace context across d
 - Material preparation runs locally against the exact current immutable profile version and persisted job version. The deterministic baseline excludes unverified evidence, non-ordinary manual facts, and contact-like statements; ranks remaining statements by normalized requirement-term coverage; and returns supported, partial, or unsupported mappings plus a verbatim evidence draft. The response is recomputable and is not duplicated into plaintext SQLite. Changing the profile invalidates the renderer's plan, and browser navigation requires a current plan that is not blocked on missing verified evidence.
 - A bounded Safe Autofill Lab creates a durable synthetic run, and the browser worker fulfills an app-owned `.invalid` page in memory, scans conventional form semantics, and returns a typed observation. Python maps controls, reasserts canonical sensitivity, applies policy, rechecks the immutable profile version, and sends only approved values with the scan hash. The worker rejects stale hashes, fills idempotently, and returns mapping metadata without values. The fixture cannot submit or contact an employer.
 - User-confirmed application outcomes are append-only revisions with schema-constrained reason codes. The latest revision is joined into the run projection, while aggregate statistics are recomputed from durable records rather than OpenTelemetry. A submitted correction carries a deterministic non-PII confirmation fingerprint and cannot be written without an explicit confirmation flag.
+- Pause, resume, and cancel cross the renderer boundary as allowlisted typed commands. A pause checkpoint persists before the `paused` transition; only checkpoint-backed resume may leave that state. The worker independently gates paused/cancelled run IDs, and the service discards late browser results that conflict with current user control.
 - OpenAI calls use the Responses API, `store=false`, strict structured outputs, and no browser, keychain, email, filesystem, or submission tools.
 
 ## Primary application flow

@@ -32,6 +32,7 @@ from .contracts import (
     ApplicationOutcome,
     ApplicationRun,
     ApplicationStatistics,
+    Checkpoint,
     ConfirmationEvidence,
     CreateRunRequest,
     FieldExplanation,
@@ -89,6 +90,22 @@ class WorkflowEventRecord(Base):
     idempotency_key: Mapped[str] = mapped_column(String(128))
     occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     run: Mapped[ApplicationRunRecord] = relationship(back_populates="events")
+
+
+class CheckpointRecord(Base):
+    __tablename__ = "checkpoints"
+    __table_args__ = (
+        UniqueConstraint("run_id", "sequence", name="uq_checkpoint_sequence"),
+        UniqueConstraint("run_id", "idempotency_key", name="uq_checkpoint_idempotency"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    run_id: Mapped[str] = mapped_column(ForeignKey("application_runs.id"), index=True)
+    step_id: Mapped[str] = mapped_column(String(128))
+    sequence: Mapped[int] = mapped_column(Integer)
+    state: Mapped[str] = mapped_column(String(32))
+    idempotency_key: Mapped[str] = mapped_column(String(128))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
 
 
 class CandidateProfileRecord(Base):
@@ -455,6 +472,67 @@ class Database:
     ) -> ApplicationRunRecord | None:
         return await session.get(ApplicationRunRecord, str(run_id))
 
+    async def get_event_by_idempotency(
+        self, run_id: UUID, idempotency_key: str
+    ) -> WorkflowEvent | None:
+        async with self.sessions() as session:
+            record = await session.scalar(
+                select(WorkflowEventRecord).where(
+                    WorkflowEventRecord.run_id == str(run_id),
+                    WorkflowEventRecord.idempotency_key == idempotency_key,
+                )
+            )
+            return self._event_to_contract(record) if record else None
+
+    async def save_checkpoint(
+        self,
+        *,
+        run_id: UUID,
+        step_id: str,
+        state: WorkflowState,
+        idempotency_key: str,
+    ) -> Checkpoint:
+        async with self.sessions() as session, session.begin():
+            existing = await session.scalar(
+                select(CheckpointRecord).where(
+                    CheckpointRecord.run_id == str(run_id),
+                    CheckpointRecord.idempotency_key == idempotency_key,
+                )
+            )
+            if existing:
+                return self._checkpoint_to_contract(existing)
+            if await session.get(ApplicationRunRecord, str(run_id)) is None:
+                raise LookupError(str(run_id))
+            sequence = (
+                await session.scalar(
+                    select(func.coalesce(func.max(CheckpointRecord.sequence), 0)).where(
+                        CheckpointRecord.run_id == str(run_id)
+                    )
+                )
+                or 0
+            ) + 1
+            record = CheckpointRecord(
+                id=str(uuid4()),
+                run_id=str(run_id),
+                step_id=step_id,
+                sequence=sequence,
+                state=state,
+                idempotency_key=idempotency_key,
+                created_at=datetime.now(UTC),
+            )
+            session.add(record)
+            return self._checkpoint_to_contract(record)
+
+    async def latest_checkpoint(self, run_id: UUID) -> Checkpoint | None:
+        async with self.sessions() as session:
+            record = await session.scalar(
+                select(CheckpointRecord)
+                .where(CheckpointRecord.run_id == str(run_id))
+                .order_by(CheckpointRecord.sequence.desc())
+                .limit(1)
+            )
+            return self._checkpoint_to_contract(record) if record else None
+
     @staticmethod
     async def _latest_outcome_record(
         session: AsyncSession, run_id: UUID
@@ -473,20 +551,7 @@ class Database:
                 .where(WorkflowEventRecord.run_id == str(run_id))
                 .order_by(WorkflowEventRecord.sequence)
             )
-            return [
-                WorkflowEvent(
-                    id=UUID(row.id),
-                    run_id=run_id,
-                    sequence=row.sequence,
-                    event_type=row.event_type,
-                    from_state=WorkflowState(row.from_state) if row.from_state else None,
-                    to_state=WorkflowState(row.to_state),
-                    reason_code=row.reason_code,
-                    safe_details=json.loads(row.safe_details_json),
-                    occurred_at=row.occurred_at,
-                )
-                for row in result
-            ]
+            return [self._event_to_contract(row) for row in result]
 
     @staticmethod
     def _run_to_contract(
@@ -595,4 +660,40 @@ class Database:
             rationale=record.rationale,
             filled=record.filled,
             recorded_at=recorded_at,
+        )
+
+    @staticmethod
+    def _checkpoint_to_contract(record: CheckpointRecord) -> Checkpoint:
+        created_at = (
+            record.created_at
+            if record.created_at.tzinfo is not None
+            else record.created_at.replace(tzinfo=UTC)
+        )
+        return Checkpoint(
+            id=UUID(record.id),
+            run_id=UUID(record.run_id),
+            step_id=record.step_id,
+            sequence=record.sequence,
+            state=WorkflowState(record.state),
+            idempotency_key=record.idempotency_key,
+            created_at=created_at,
+        )
+
+    @staticmethod
+    def _event_to_contract(record: WorkflowEventRecord) -> WorkflowEvent:
+        occurred_at = (
+            record.occurred_at
+            if record.occurred_at.tzinfo is not None
+            else record.occurred_at.replace(tzinfo=UTC)
+        )
+        return WorkflowEvent(
+            id=UUID(record.id),
+            run_id=UUID(record.run_id),
+            sequence=record.sequence,
+            event_type=record.event_type,
+            from_state=WorkflowState(record.from_state) if record.from_state else None,
+            to_state=WorkflowState(record.to_state),
+            reason_code=record.reason_code,
+            safe_details=json.loads(record.safe_details_json),
+            occurred_at=occurred_at,
         )

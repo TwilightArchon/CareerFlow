@@ -4,10 +4,11 @@ import WebSocket from 'ws';
 import { BrowserCommandSchema, BrowserWorkerMessageSchema } from '@careerflow/contracts';
 
 import { BrowserRuntime } from './runtime';
+import { RunControlGate } from './run-control';
 import { requireLoopbackWebSocketUrl } from './security';
 import { startTelemetry } from './telemetry';
 
-const WORKER_VERSION = '0.1.9';
+const WORKER_VERSION = '0.1.10';
 const sdk = startTelemetry();
 const tracer = trace.getTracer('careerflow-browser-worker', WORKER_VERSION);
 const meter = metrics.getMeter('careerflow-browser-worker', WORKER_VERSION);
@@ -29,6 +30,7 @@ if (!rawUrl || !token || !profileDir) {
 const url = requireLoopbackWebSocketUrl(rawUrl);
 let heartbeat: NodeJS.Timeout | undefined;
 const runtime = new BrowserRuntime(profileDir);
+const runControl = new RunControlGate();
 
 const ws = new WebSocket(url, {
   headers: { Authorization: `Bearer ${token}` },
@@ -71,7 +73,47 @@ ws.on('message', (data) => {
     span.setAttribute('careerflow.run_id', command.envelope.runId);
     span.setAttribute('careerflow.browser.command', command.action);
     try {
-      if (command.action === 'navigate' && command.url) {
+      if (command.action === 'pause') {
+        runControl.apply(command.envelope.runId, command.action);
+        ws.send(
+          JSON.stringify(
+            BrowserWorkerMessageSchema.parse({
+              type: 'action_result',
+              actionId: command.commandId,
+              runId: command.envelope.runId,
+              action: command.action,
+              ok: true,
+            }),
+          ),
+        );
+      } else if (command.action === 'resume') {
+        runControl.apply(command.envelope.runId, command.action);
+        ws.send(
+          JSON.stringify(
+            BrowserWorkerMessageSchema.parse({
+              type: 'action_result',
+              actionId: command.commandId,
+              runId: command.envelope.runId,
+              action: command.action,
+              ok: true,
+            }),
+          ),
+        );
+      } else if (command.action === 'cancel') {
+        runControl.apply(command.envelope.runId, command.action);
+        ws.send(
+          JSON.stringify(
+            BrowserWorkerMessageSchema.parse({
+              type: 'action_result',
+              actionId: command.commandId,
+              runId: command.envelope.runId,
+              action: command.action,
+              ok: true,
+            }),
+          ),
+        );
+      } else if (command.action === 'navigate' && command.url) {
+        runControl.assertActionAllowed(command.envelope.runId);
         const pageStateHash = await runtime.navigate(command.url);
         ws.send(
           JSON.stringify(
@@ -79,12 +121,14 @@ ws.on('message', (data) => {
               type: 'action_result',
               actionId: command.commandId,
               runId: command.envelope.runId,
+              action: command.action,
               ok: true,
               pageStateHash,
             }),
           ),
         );
       } else if (command.action === 'open_synthetic_form' || command.action === 'scan') {
+        runControl.assertActionAllowed(command.envelope.runId);
         const observedForm =
           command.action === 'open_synthetic_form'
             ? await runtime.openSyntheticForm()
@@ -101,6 +145,7 @@ ws.on('message', (data) => {
           ),
         );
       } else if (command.action === 'fill') {
+        runControl.assertActionAllowed(command.envelope.runId);
         const filledMappings = await runtime.fillApprovedFields(
           command.fills,
           command.expectedPageStateHash,
@@ -144,6 +189,7 @@ ws.on('message', (data) => {
               type: 'action_result' as const,
               actionId: command.commandId,
               runId: command.envelope.runId,
+              action: command.action,
               ok: false,
               errorCode:
                 command.action === 'open_synthetic_form' || command.action === 'scan'

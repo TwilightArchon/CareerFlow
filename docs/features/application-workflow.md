@@ -10,7 +10,7 @@ Coordinate the full application as an explicit, recoverable state machine so bro
 
 ## Canonical states
 
-`created`, `ingesting_job`, `preparing_materials`, `opening_application`, `authenticating`, `registering`, `verifying_email`, `filling`, `awaiting_human`, `validating`, `ready_to_submit`, `submitting`, `submitted`, `failed`, `cancelled`, and `outcome_uncertain`.
+`created`, `ingesting_job`, `preparing_materials`, `opening_application`, `authenticating`, `registering`, `verifying_email`, `filling`, `paused`, `awaiting_human`, `validating`, `ready_to_submit`, `submitting`, `submitted`, `failed`, `cancelled`, and `outcome_uncertain`.
 
 ## Responsibilities
 
@@ -48,6 +48,8 @@ Use transition-table tests, property tests for invalid transitions, injected cra
 
 Canonical states and allowed transitions are enforced in a service layer. Runs and append-only events persist in SQLite, transition idempotency is protected by unique keys, and `submitting` is rejected without per-run authorization. Before run creation, the desktop now requires a version-checked grounded material plan; missing eligible verified evidence blocks navigation with a review path. The current plan is recomputable renderer state and is not yet a durable workflow checkpoint. Browser navigation moves an immediate run through the initial states and records its result.
 
-A Safe Autofill Lab synthetic run moves through scan, filling, validation, and `awaiting_human`; its workflow events persist observed, filled, and review-required counts without values. The scan hash gates the fill, and the exact profile version is rechecked before any value is sent to the browser worker. The desktop restores and refreshes current run states from the durable store after relaunch. Durable material approval, execution resumption, checkpoints, explicit queue ordering, cancellation, retries, timeouts, LangGraph execution, and crash-injection coverage remain pending.
+A Safe Autofill Lab synthetic run moves through scan, filling, validation, and `awaiting_human`; its workflow events persist observed, filled, and review-required counts without values. The scan hash gates the fill, and the exact profile version is rechecked before any value is sent to the browser worker. The desktop restores and refreshes current run states from the durable store after relaunch.
+
+User pause now stores the exact pre-pause workflow state in an idempotent durable checkpoint before transitioning to the explicit `paused` state. Resume is permitted only through that checkpoint and requires a connected browser worker; unrelated or late browser results cannot transition a paused run. Cancel is terminal, blocks later browser actions, and records a user-confirmed cancelled outcome. Repeated control requests with the same idempotency key do not create duplicate checkpoints or transitions. Automatic process-recovery orchestration, retries, timeouts, explicit queue ordering, LangGraph execution, and crash-injection coverage remain pending.
 
 User-confirmed application outcomes are tracked as a separate append-only projection and do not rewrite the workflow transition history. Recording an outcome removes an otherwise non-terminal run from the active desktop queue, while its last workflow state remains inspectable in Applications. Future automated submission must still use the canonical `submitting` → `submitted` transition and attach external confirmation evidence.

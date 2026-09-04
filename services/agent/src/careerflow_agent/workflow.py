@@ -15,11 +15,14 @@ METER = metrics.get_meter("careerflow.workflow")
 TRANSITIONS = METER.create_counter("workflow_transitions_total")
 
 ALLOWED_TRANSITIONS: dict[WorkflowState, frozenset[WorkflowState]] = {
-    WorkflowState.CREATED: frozenset({WorkflowState.INGESTING_JOB, WorkflowState.CANCELLED}),
+    WorkflowState.CREATED: frozenset(
+        {WorkflowState.INGESTING_JOB, WorkflowState.PAUSED, WorkflowState.CANCELLED}
+    ),
     WorkflowState.INGESTING_JOB: frozenset(
         {
             WorkflowState.PREPARING_MATERIALS,
             WorkflowState.AWAITING_HUMAN,
+            WorkflowState.PAUSED,
             WorkflowState.FAILED,
             WorkflowState.CANCELLED,
         }
@@ -28,6 +31,7 @@ ALLOWED_TRANSITIONS: dict[WorkflowState, frozenset[WorkflowState]] = {
         {
             WorkflowState.OPENING_APPLICATION,
             WorkflowState.AWAITING_HUMAN,
+            WorkflowState.PAUSED,
             WorkflowState.FAILED,
             WorkflowState.CANCELLED,
         }
@@ -37,6 +41,7 @@ ALLOWED_TRANSITIONS: dict[WorkflowState, frozenset[WorkflowState]] = {
             WorkflowState.AUTHENTICATING,
             WorkflowState.FILLING,
             WorkflowState.AWAITING_HUMAN,
+            WorkflowState.PAUSED,
             WorkflowState.FAILED,
             WorkflowState.CANCELLED,
         }
@@ -46,6 +51,7 @@ ALLOWED_TRANSITIONS: dict[WorkflowState, frozenset[WorkflowState]] = {
             WorkflowState.REGISTERING,
             WorkflowState.FILLING,
             WorkflowState.AWAITING_HUMAN,
+            WorkflowState.PAUSED,
             WorkflowState.FAILED,
             WorkflowState.CANCELLED,
         }
@@ -55,6 +61,7 @@ ALLOWED_TRANSITIONS: dict[WorkflowState, frozenset[WorkflowState]] = {
             WorkflowState.VERIFYING_EMAIL,
             WorkflowState.FILLING,
             WorkflowState.AWAITING_HUMAN,
+            WorkflowState.PAUSED,
             WorkflowState.FAILED,
             WorkflowState.CANCELLED,
         }
@@ -63,6 +70,7 @@ ALLOWED_TRANSITIONS: dict[WorkflowState, frozenset[WorkflowState]] = {
         {
             WorkflowState.FILLING,
             WorkflowState.AWAITING_HUMAN,
+            WorkflowState.PAUSED,
             WorkflowState.FAILED,
             WorkflowState.CANCELLED,
         }
@@ -71,6 +79,7 @@ ALLOWED_TRANSITIONS: dict[WorkflowState, frozenset[WorkflowState]] = {
         {
             WorkflowState.VALIDATING,
             WorkflowState.AWAITING_HUMAN,
+            WorkflowState.PAUSED,
             WorkflowState.FAILED,
             WorkflowState.CANCELLED,
         }
@@ -80,6 +89,7 @@ ALLOWED_TRANSITIONS: dict[WorkflowState, frozenset[WorkflowState]] = {
             WorkflowState.FILLING,
             WorkflowState.VALIDATING,
             WorkflowState.READY_TO_SUBMIT,
+            WorkflowState.PAUSED,
             WorkflowState.CANCELLED,
             WorkflowState.FAILED,
         }
@@ -89,15 +99,37 @@ ALLOWED_TRANSITIONS: dict[WorkflowState, frozenset[WorkflowState]] = {
             WorkflowState.FILLING,
             WorkflowState.READY_TO_SUBMIT,
             WorkflowState.AWAITING_HUMAN,
+            WorkflowState.PAUSED,
             WorkflowState.FAILED,
             WorkflowState.CANCELLED,
         }
     ),
     WorkflowState.READY_TO_SUBMIT: frozenset(
-        {WorkflowState.SUBMITTING, WorkflowState.AWAITING_HUMAN, WorkflowState.CANCELLED}
+        {
+            WorkflowState.SUBMITTING,
+            WorkflowState.AWAITING_HUMAN,
+            WorkflowState.PAUSED,
+            WorkflowState.CANCELLED,
+        }
     ),
     WorkflowState.SUBMITTING: frozenset(
         {WorkflowState.SUBMITTED, WorkflowState.OUTCOME_UNCERTAIN, WorkflowState.FAILED}
+    ),
+    WorkflowState.PAUSED: frozenset(
+        {
+            WorkflowState.CREATED,
+            WorkflowState.INGESTING_JOB,
+            WorkflowState.PREPARING_MATERIALS,
+            WorkflowState.OPENING_APPLICATION,
+            WorkflowState.AUTHENTICATING,
+            WorkflowState.REGISTERING,
+            WorkflowState.VERIFYING_EMAIL,
+            WorkflowState.FILLING,
+            WorkflowState.AWAITING_HUMAN,
+            WorkflowState.VALIDATING,
+            WorkflowState.READY_TO_SUBMIT,
+            WorkflowState.CANCELLED,
+        }
     ),
     WorkflowState.SUBMITTED: frozenset(),
     WorkflowState.FAILED: frozenset(),
@@ -148,6 +180,14 @@ class WorkflowService:
                 if to_state not in ALLOWED_TRANSITIONS[from_state]:
                     raise InvalidTransitionError(
                         f"Cannot transition from {from_state} to {to_state}"
+                    )
+                if (
+                    from_state is WorkflowState.PAUSED
+                    and to_state is not WorkflowState.CANCELLED
+                    and reason_code != "user_resumed_from_checkpoint"
+                ):
+                    raise InvalidTransitionError(
+                        "A paused run can resume only through its saved checkpoint"
                     )
 
                 if to_state is WorkflowState.SUBMITTING and not run.auto_submit_authorized:

@@ -39,8 +39,10 @@ from .contracts import (
     ApplicationOutcome,
     ApplicationRun,
     ApplicationStatistics,
+    BrowserActionResult,
     BrowserCommand,
     CandidateProfileSnapshot,
+    Checkpoint,
     CreateRunRequest,
     DocumentStatus,
     FieldExplanation,
@@ -51,12 +53,15 @@ from .contracts import (
     JobPosting,
     JobRequirement,
     ObservedForm,
+    OutcomeReasonCode,
+    OutcomeType,
     Platform,
     PlatformDetection,
     PrepareMaterialsRequest,
     RecordApplicationOutcomeRequest,
     ResumeImportResult,
     ResumePreviewResult,
+    RunControlRequest,
     SaveCandidateProfileRequest,
     SetEvidenceVerificationRequest,
     SourceSpan,
@@ -165,6 +170,46 @@ class ServiceState:
             command.model_dump(mode="json", by_alias=True, exclude_none=True)
         )
 
+    async def scan_synthetic_form(self, run: ApplicationRun, idempotency_key: str) -> None:
+        if self.browser_socket is None:
+            raise RuntimeError("Browser worker is not connected")
+        carrier: dict[str, str] = {}
+        inject(carrier)
+        command = BrowserCommand(
+            action="scan",
+            envelope=ActionMetadata(
+                run_id=run.id,
+                step_id="synthetic_form_rescan",
+                idempotency_key=idempotency_key,
+                authorization_scope="inspect",
+                redaction_policy="metadata_only",
+                trace_context=TraceContext(traceparent=carrier.get("traceparent")),
+            ),
+        )
+        await self.browser_socket.send_json(
+            command.model_dump(mode="json", by_alias=True, exclude_none=True)
+        )
+
+    async def send_browser_control(self, run: ApplicationRun, request: RunControlRequest) -> None:
+        if self.browser_socket is None:
+            return
+        carrier: dict[str, str] = {}
+        inject(carrier)
+        command = BrowserCommand(
+            action=request.command,
+            envelope=ActionMetadata(
+                run_id=run.id,
+                step_id=f"user_{request.command}",
+                idempotency_key=request.idempotency_key,
+                authorization_scope="inspect",
+                redaction_policy="metadata_only",
+                trace_context=TraceContext(traceparent=carrier.get("traceparent")),
+            ),
+        )
+        await self.browser_socket.send_json(
+            command.model_dump(mode="json", by_alias=True, exclude_none=True)
+        )
+
     async def handle_observed_form(
         self, *, run_id: UUID, action_id: str, observed_form: ObservedForm
     ) -> None:
@@ -174,6 +219,8 @@ class ServiceState:
         snapshot = await self.profile_vault.load()
         if run is None:
             raise RunNotFoundError(str(run_id))
+        if run.state in {WorkflowState.PAUSED, WorkflowState.CANCELLED} or run.latest_outcome:
+            return
         if (
             run.platform is not Platform.SYNTHETIC
             or str(observed_form.page_url) != SYNTHETIC_FORM_URL
@@ -250,6 +297,8 @@ class ServiceState:
         run = await self.database.get_run(run_id)
         if run is None:
             raise RunNotFoundError(str(run_id))
+        if run.state in {WorkflowState.PAUSED, WorkflowState.CANCELLED} or run.latest_outcome:
+            return
         if run.platform is not Platform.SYNTHETIC:
             raise InvalidTransitionError("Synthetic fill results require a synthetic run")
         filled_count = len(filled_mappings)
@@ -654,11 +703,110 @@ def create_app(
         )
         return event
 
+    @app.post("/v1/runs/{run_id}/control", response_model=ApplicationRun)
+    async def control_run(
+        run_id: UUID,
+        request: RunControlRequest,
+        _auth: None = Depends(require_token),
+    ) -> ApplicationRun:
+        run = await state.database.get_run(run_id)
+        if run is None:
+            raise HTTPException(status_code=404, detail="Run not found")
+        existing = await state.database.get_event_by_idempotency(run_id, request.idempotency_key)
+        if existing:
+            current = await state.database.get_run(run_id)
+            if current is None:
+                raise HTTPException(status_code=404, detail="Run not found")
+            return current
+        if run.latest_outcome:
+            raise HTTPException(
+                status_code=409, detail="Completed applications cannot be controlled"
+            )
+
+        try:
+            if request.command == "pause":
+                if run.state in {
+                    WorkflowState.PAUSED,
+                    WorkflowState.SUBMITTING,
+                    WorkflowState.SUBMITTED,
+                    WorkflowState.FAILED,
+                    WorkflowState.CANCELLED,
+                    WorkflowState.OUTCOME_UNCERTAIN,
+                }:
+                    raise InvalidTransitionError(f"Cannot pause a run in {run.state}")
+                await state.database.save_checkpoint(
+                    run_id=run_id,
+                    step_id="user_pause",
+                    state=run.state,
+                    idempotency_key=request.idempotency_key,
+                )
+                await state.workflow.transition(
+                    run_id=run_id,
+                    to_state=WorkflowState.PAUSED,
+                    reason_code="user_requested_pause",
+                    idempotency_key=request.idempotency_key,
+                    safe_details={"checkpoint_state": run.state},
+                )
+            elif request.command == "resume":
+                if run.state is not WorkflowState.PAUSED:
+                    raise InvalidTransitionError("Only a paused run can be resumed")
+                if state.browser_socket is None:
+                    raise InvalidTransitionError("Browser worker must be connected to resume")
+                checkpoint = await state.database.latest_checkpoint(run_id)
+                if checkpoint is None:
+                    raise InvalidTransitionError("No safe checkpoint is available for this run")
+                await state.workflow.transition(
+                    run_id=run_id,
+                    to_state=checkpoint.state,
+                    reason_code="user_resumed_from_checkpoint",
+                    idempotency_key=request.idempotency_key,
+                    safe_details={
+                        "checkpoint_id": str(checkpoint.id),
+                        "checkpoint_sequence": checkpoint.sequence,
+                    },
+                )
+            else:
+                await state.workflow.transition(
+                    run_id=run_id,
+                    to_state=WorkflowState.CANCELLED,
+                    reason_code="user_cancelled_run",
+                    idempotency_key=request.idempotency_key,
+                )
+                await state.database.record_application_outcome(
+                    run_id=run_id,
+                    outcome=OutcomeType.CANCELLED,
+                    reason_code=OutcomeReasonCode.USER_CANCELLED,
+                )
+        except (InvalidTransitionError, LookupError) as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
+
+        updated = await state.database.get_run(run_id)
+        if updated is None:
+            raise HTTPException(status_code=404, detail="Run not found")
+        await state.send_browser_control(updated, request)
+        await state.publish(
+            {
+                "type": "run_controlled",
+                "run_id": str(run_id),
+                "command": request.command,
+                "state": updated.state,
+            }
+        )
+        return updated
+
     @app.get("/v1/runs/{run_id}/events", response_model=list[WorkflowEvent])
     async def list_run_events(
         run_id: UUID, _auth: None = Depends(require_token)
     ) -> list[WorkflowEvent]:
         return await state.database.list_events(run_id)
+
+    @app.get("/v1/runs/{run_id}/checkpoint", response_model=Checkpoint | None)
+    async def get_latest_checkpoint(
+        run_id: UUID, _auth: None = Depends(require_token)
+    ) -> Checkpoint | None:
+        if await state.database.get_run(run_id) is None:
+            raise HTTPException(status_code=404, detail="Run not found")
+        return await state.database.latest_checkpoint(run_id)
 
     @app.get(
         "/v1/runs/{run_id}/field-explanations",
@@ -788,27 +936,68 @@ def create_app(
                         }
                     )
                 elif message.get("type") == "action_result":
-                    run_id = UUID(str(message["runId"]))
-                    action_id = str(message["actionId"])
-                    await state.workflow.transition(
-                        run_id=run_id,
-                        to_state=(
-                            WorkflowState.FILLING
-                            if message.get("ok")
-                            else WorkflowState.AWAITING_HUMAN
-                        ),
-                        reason_code=(
-                            "browser_navigation_complete"
-                            if message.get("ok")
-                            else "browser_navigation_failed"
-                        ),
-                        idempotency_key=f"browser-result-{action_id}",
-                    )
+                    result = BrowserActionResult.model_validate(message)
+                    run_id = result.run_id
+                    action_id = str(result.action_id)
+                    if result.action in {"pause", "resume", "cancel"}:
+                        run = await state.database.get_run(run_id)
+                        if (
+                            result.action == "resume"
+                            and result.ok
+                            and run
+                            and run.platform is Platform.SYNTHETIC
+                            and run.state not in {WorkflowState.PAUSED, WorkflowState.CANCELLED}
+                            and run.latest_outcome is None
+                        ):
+                            await state.scan_synthetic_form(
+                                run, f"synthetic-rescan-after-resume-{action_id}"
+                            )
+                        elif (
+                            result.action == "resume"
+                            and not result.ok
+                            and run
+                            and run.state
+                            not in {
+                                WorkflowState.PAUSED,
+                                WorkflowState.CANCELLED,
+                                WorkflowState.SUBMITTED,
+                                WorkflowState.FAILED,
+                                WorkflowState.OUTCOME_UNCERTAIN,
+                            }
+                        ):
+                            await state.workflow.transition(
+                                run_id=run_id,
+                                to_state=WorkflowState.PAUSED,
+                                reason_code="browser_resume_failed",
+                                idempotency_key=f"browser-control-failed-{action_id}",
+                            )
+                    else:
+                        run = await state.database.get_run(run_id)
+                        if (
+                            run
+                            and run.state not in {WorkflowState.PAUSED, WorkflowState.CANCELLED}
+                            and run.latest_outcome is None
+                        ):
+                            await state.workflow.transition(
+                                run_id=run_id,
+                                to_state=(
+                                    WorkflowState.FILLING
+                                    if result.action == "navigate" and result.ok
+                                    else WorkflowState.AWAITING_HUMAN
+                                ),
+                                reason_code=(
+                                    "browser_navigation_complete"
+                                    if result.action == "navigate" and result.ok
+                                    else f"browser_{result.action}_failed"
+                                ),
+                                idempotency_key=f"browser-result-{action_id}",
+                            )
                     await state.publish(
                         {
                             "type": "browser_action_result",
                             "run_id": str(run_id),
-                            "ok": bool(message.get("ok")),
+                            "action": result.action,
+                            "ok": result.ok,
                         }
                     )
         except WebSocketDisconnect:

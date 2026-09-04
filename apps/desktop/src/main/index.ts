@@ -54,6 +54,13 @@ app.whenReady().then(async () => {
     ) => supervisor.recordApplicationOutcome(input.runId, input.outcome),
   );
   ipcMain.handle('applications:statistics', () => supervisor.getApplicationStatistics());
+  ipcMain.handle(
+    'runs:control',
+    (
+      _event,
+      input: { runId: string; control: import('@careerflow/contracts').RunControlRequest },
+    ) => supervisor.controlRun(input.runId, input.control),
+  );
   ipcMain.handle('profile:get', () => supervisor.getProfile());
   ipcMain.handle(
     'profile:save',

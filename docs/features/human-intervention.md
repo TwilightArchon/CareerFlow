@@ -1,6 +1,6 @@
 # Feature: Human Intervention and Resume
 
-Status: proposed  
+Status: user-requested pause foundation implemented
 Owner: `apps/desktop` and `services/agent`  
 Last updated: 2026-08-22
 
@@ -42,3 +42,9 @@ Only the owning user may resolve an intervention. Sensitive answers are masked a
 ## Tests and evaluations
 
 Test every category, notification redaction, session restart, stale page, duplicate response, manual browser completion, cancellation race, policy reuse, and accessibility with keyboard and screen reader flows.
+
+## Current implementation
+
+The desktop provides explicit pause, resume, and cancel actions for active runs. User pause persists a typed checkpoint containing the exact resumable state, moves the run to `paused`, and sends an idempotent browser-control command. Resume requires the browser worker, restores only the checkpointed state, and rescans the synthetic form instead of assuming its page is unchanged. Cancel is terminal and records a constrained cancellation outcome. Browser and workflow gates reject stale automated work while paused or cancelled.
+
+Policy-generated intervention records, expiry, notifications, corrected-value references, automatic manual-step detection, and reusable answer policies remain pending.

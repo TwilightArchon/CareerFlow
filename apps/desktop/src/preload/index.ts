@@ -13,6 +13,7 @@ import type {
   ResumeImportResult,
   ResumePreviewResult,
   RecordApplicationOutcomeRequest,
+  RunControlRequest,
 } from '@careerflow/contracts';
 
 export interface CareerFlowApi {
@@ -24,6 +25,7 @@ export interface CareerFlowApi {
     outcome: RecordApplicationOutcomeRequest;
   }): Promise<ApplicationOutcome>;
   getApplicationStatistics(): Promise<ApplicationStatistics>;
+  controlRun(input: { runId: string; control: RunControlRequest }): Promise<ApplicationRun>;
   getProfile(): Promise<CandidateProfileSnapshot | null>;
   saveProfile(input: {
     profile: CandidateProfileInput;
@@ -68,6 +70,7 @@ const api: CareerFlowApi = {
     ipcRenderer.invoke('runs:outcome:record', input) as Promise<ApplicationOutcome>,
   getApplicationStatistics: () =>
     ipcRenderer.invoke('applications:statistics') as Promise<ApplicationStatistics>,
+  controlRun: (input) => ipcRenderer.invoke('runs:control', input) as Promise<ApplicationRun>,
   getProfile: () => ipcRenderer.invoke('profile:get') as Promise<CandidateProfileSnapshot | null>,
   saveProfile: (input) =>
     ipcRenderer.invoke('profile:save', input) as Promise<CandidateProfileSnapshot>,

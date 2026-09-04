@@ -35,6 +35,7 @@ export const WorkflowStateSchema = z.enum([
   'registering',
   'verifying_email',
   'filling',
+  'paused',
   'awaiting_human',
   'validating',
   'ready_to_submit',
@@ -168,6 +169,11 @@ export const ApplicationStatisticsSchema = z.object({
   resolutionRate: z.number().min(0).max(1),
   submittedRate: z.number().min(0).max(1),
   generatedAt: z.string(),
+});
+
+export const RunControlRequestSchema = z.object({
+  command: z.enum(['pause', 'resume', 'cancel']),
+  idempotencyKey: z.string().min(16).max(128),
 });
 
 export const CandidateProfileInputSchema = z.object({
@@ -411,6 +417,15 @@ export const BrowserWorkerMessageSchema = z.discriminatedUnion('type', [
     type: z.literal('action_result'),
     actionId: z.string(),
     runId: z.string().uuid(),
+    action: z.enum([
+      'navigate',
+      'open_synthetic_form',
+      'fill',
+      'scan',
+      'pause',
+      'resume',
+      'cancel',
+    ]),
     ok: z.boolean(),
     pageStateHash: z.string().optional(),
     errorCode: z.string().optional(),
@@ -456,6 +471,7 @@ export type ApplicationOutcome = z.infer<typeof ApplicationOutcomeSchema>;
 export type RecordApplicationOutcomeRequest = z.infer<typeof RecordApplicationOutcomeRequestSchema>;
 export type ApplicationRun = z.infer<typeof ApplicationRunSchema>;
 export type ApplicationStatistics = z.infer<typeof ApplicationStatisticsSchema>;
+export type RunControlRequest = z.infer<typeof RunControlRequestSchema>;
 export type CandidateProfileInput = z.infer<typeof CandidateProfileInputSchema>;
 export type CandidateProfileSnapshot = z.infer<typeof CandidateProfileSnapshotSchema>;
 export type ResumeImportResult = z.infer<typeof ResumeImportResultSchema>;

@@ -9,6 +9,7 @@ CareerFlow is a desktop-first, supervised job-application agent. A user pastes a
 - AI and workflow service: Python 3.13, FastAPI, Pydantic, LangGraph, and the OpenAI Responses API boundary
 - Data: local SQLite workflow records plus AES-256-GCM encrypted-payload support and macOS Keychain references
 - Tracking: restored application history, append-only user-confirmed outcome revisions, stable reason codes, outcome/platform filters, and locally reconciled statistics
+- Run control: durable pause checkpoints, checkpoint-backed resume, confirmed cancellation, stale-result protection, and independent browser-worker action gates
 - Explainability: durable per-run field decisions show what was filled or held for review and why, without displaying saved candidate values
 - Profile vault: token-free résumé-first profile suggestions, including PDF-embedded LinkedIn/GitHub profile links, plus verified facts in immutable AES-256-GCM encrypted versions with the key held in macOS Keychain
 - Grounded preparation: local requirement-to-evidence matching, explicit coverage gaps, and a verbatim review draft sourced only from verified evidence
@@ -58,4 +59,4 @@ Optional local traces are available after `pnpm telemetry:up`; open Jaeger at `h
 
 ## Current status
 
-Foundation, deterministic job review, encrypted résumé-evidence, grounded material preparation, supervised navigation, a controlled synthetic form-filling slice, and durable application tracking. The Safe Autofill Lab demonstrates visible scanning, canonical field mapping, policy-gated filling, stale-page protection, and a durable review-required state without contacting or submitting to an employer. Users can explicitly record and correct outcomes, filter history, and view statistics derived from local records. It is not ready for real automated applications.
+Foundation, deterministic job review, encrypted résumé-evidence, grounded material preparation, supervised navigation, a controlled synthetic form-filling slice, durable run controls, and application tracking. The Safe Autofill Lab demonstrates visible scanning, canonical field mapping, policy-gated filling, stale-page protection, pause/resume/cancel, and a durable review-required state without contacting or submitting to an employer. Users can explicitly record and correct outcomes, filter history, and view statistics derived from local records. It is not ready for real automated applications.

@@ -12,6 +12,7 @@ import {
   JobPostingSchema,
   ResumePreviewResultSchema,
   RecordApplicationOutcomeRequestSchema,
+  RunControlRequestSchema,
   SourceDocumentSchema,
   SCHEMA_VERSION,
 } from '../src/index';
@@ -246,6 +247,20 @@ describe('BrowserCommand', () => {
     });
 
     expect(parsed.fills[0]?.canonicalPath).toBe('identity.first_name');
+  });
+});
+
+describe('RunControlRequest', () => {
+  it('allows only explicit pause, resume, and cancel commands with idempotency', () => {
+    expect(
+      RunControlRequestSchema.parse({
+        command: 'pause',
+        idempotencyKey: 'pause-request-0001',
+      }).command,
+    ).toBe('pause');
+    expect(
+      RunControlRequestSchema.safeParse({ command: 'stop', idempotencyKey: 'short' }).success,
+    ).toBe(false);
   });
 });
 

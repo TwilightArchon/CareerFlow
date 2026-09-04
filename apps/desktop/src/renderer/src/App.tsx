@@ -10,6 +10,7 @@ import type {
   JobPosting,
   OutcomeReasonCode,
   OutcomeType,
+  RunControlRequest,
   WorkflowState,
 } from '@careerflow/contracts';
 
@@ -22,7 +23,7 @@ type PlatformFilter = 'all' | NonNullable<ApplicationRun['platform']>;
 const emptyHealth: HealthStatus = {
   status: 'starting',
   service: 'careerflow-agent',
-  version: '0.1.9',
+  version: '0.1.10',
   browserWorkerConnected: false,
   databaseReady: false,
   telemetryReady: false,
@@ -42,6 +43,7 @@ function stateLabel(state: WorkflowState): string {
     preparing_materials: 'Preparing',
     opening_application: 'Opening browser',
     filling: 'Browser opened',
+    paused: 'Paused',
     awaiting_human: 'Needs attention',
     ready_to_submit: 'Ready to submit',
     outcome_uncertain: 'Outcome uncertain',
@@ -69,6 +71,10 @@ interface RunListProps {
   outcomeError?: string | undefined;
   onRecordOutcome?:
     ((runId: string, outcome: OutcomeType, reasonCode: OutcomeReasonCode) => void) | undefined;
+  controllingRunId?: string | undefined;
+  controlErrorRunId?: string | undefined;
+  controlError?: string | undefined;
+  onControlRun?: ((runId: string, command: RunControlRequest['command']) => void) | undefined;
 }
 
 const outcomeOptions: { value: OutcomeType; label: string }[] = [
@@ -125,6 +131,10 @@ function RunList({
   outcomeErrorRunId,
   outcomeError,
   onRecordOutcome,
+  controllingRunId,
+  controlErrorRunId,
+  controlError,
+  onControlRun,
 }: RunListProps) {
   const [outcomeDrafts, setOutcomeDrafts] = useState<Record<string, OutcomeType>>({});
   const [failedReasonDrafts, setFailedReasonDrafts] = useState<Record<string, OutcomeReasonCode>>(
@@ -176,6 +186,34 @@ function RunList({
               </div>
               <div className="run-card-actions">
                 <span className={`run-state ${run.state}`}>{stateLabel(run.state)}</span>
+                {onControlRun &&
+                  !terminalStates.has(run.state) &&
+                  run.state !== 'submitting' &&
+                  !run.latestOutcome && (
+                    <div className="run-controls">
+                      <button
+                        type="button"
+                        disabled={controllingRunId === run.id}
+                        onClick={() =>
+                          onControlRun(run.id, run.state === 'paused' ? 'resume' : 'pause')
+                        }
+                      >
+                        {controllingRunId === run.id
+                          ? 'Working…'
+                          : run.state === 'paused'
+                            ? 'Resume'
+                            : 'Pause'}
+                      </button>
+                      <button
+                        className="cancel-control"
+                        type="button"
+                        disabled={controllingRunId === run.id}
+                        onClick={() => onControlRun(run.id, 'cancel')}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  )}
                 {showDetails && onToggleExplanations && (
                   <button
                     className="field-detail-button"
@@ -192,6 +230,11 @@ function RunList({
                 )}
               </div>
             </div>
+            {controlErrorRunId === run.id && controlError && (
+              <p className="run-control-error error" role="alert">
+                {controlError}
+              </p>
+            )}
             {showDetails && onRecordOutcome && (
               <details className="outcome-editor">
                 <summary>
@@ -326,6 +369,9 @@ export function App(): React.JSX.Element {
   const [outcomeError, setOutcomeError] = useState<string>();
   const [outcomeFilter, setOutcomeFilter] = useState<OutcomeFilter>('all');
   const [platformFilter, setPlatformFilter] = useState<PlatformFilter>('all');
+  const [controllingRunId, setControllingRunId] = useState<string>();
+  const [controlErrorRunId, setControlErrorRunId] = useState<string>();
+  const [controlError, setControlError] = useState<string>();
 
   useEffect(() => {
     let active = true;
@@ -552,6 +598,36 @@ export function App(): React.JSX.Element {
       );
     } finally {
       setSavingOutcomeRunId(undefined);
+    }
+  }
+
+  async function controlRun(runId: string, command: RunControlRequest['command']): Promise<void> {
+    if (
+      command === 'cancel' &&
+      !window.confirm('Cancel this run? CareerFlow will block all future automated actions.')
+    ) {
+      return;
+    }
+    setControllingRunId(runId);
+    setControlErrorRunId(undefined);
+    setControlError(undefined);
+    try {
+      const updated = await window.careerflow.controlRun({
+        runId,
+        control: {
+          command,
+          idempotencyKey: `user-${command}-${runId}-${crypto.randomUUID()}`,
+        },
+      });
+      setRuns((current) => [updated, ...current.filter((run) => run.id !== runId)]);
+      if (command === 'cancel') {
+        setStatistics(await window.careerflow.getApplicationStatistics());
+      }
+    } catch (caught) {
+      setControlErrorRunId(runId);
+      setControlError(caught instanceof Error ? caught.message : `The run could not ${command}.`);
+    } finally {
+      setControllingRunId(undefined);
     }
   }
 
@@ -904,7 +980,13 @@ export function App(): React.JSX.Element {
                     <p>Add a job link to create a supervised application run.</p>
                   </div>
                 ) : (
-                  <RunList runs={activeRuns} />
+                  <RunList
+                    runs={activeRuns}
+                    controllingRunId={controllingRunId}
+                    controlErrorRunId={controlErrorRunId}
+                    controlError={controlError}
+                    onControlRun={(runId, command) => void controlRun(runId, command)}
+                  />
                 )}
               </div>
 
@@ -1052,6 +1134,10 @@ export function App(): React.JSX.Element {
                 onRecordOutcome={(runId, outcome, reasonCode) =>
                   void recordOutcome(runId, outcome, reasonCode)
                 }
+                controllingRunId={controllingRunId}
+                controlErrorRunId={controlErrorRunId}
+                controlError={controlError}
+                onControlRun={(runId, command) => void controlRun(runId, command)}
               />
             )}
           </section>

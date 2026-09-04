@@ -577,6 +577,46 @@
         "title": "CandidateProfileSnapshot",
         "type": "object"
       },
+      "Checkpoint": {
+        "additionalProperties": false,
+        "properties": {
+          "createdAt": {
+            "format": "date-time",
+            "title": "Createdat",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "idempotencyKey": {
+            "minLength": 16,
+            "title": "Idempotencykey",
+            "type": "string"
+          },
+          "runId": {
+            "format": "uuid",
+            "title": "Runid",
+            "type": "string"
+          },
+          "sequence": {
+            "minimum": 1.0,
+            "title": "Sequence",
+            "type": "integer"
+          },
+          "state": {
+            "$ref": "#/components/schemas/WorkflowState"
+          },
+          "stepId": {
+            "title": "Stepid",
+            "type": "string"
+          }
+        },
+        "required": ["runId", "stepId", "sequence", "state", "idempotencyKey"],
+        "title": "Checkpoint",
+        "type": "object"
+      },
       "ConfirmationEvidence": {
         "additionalProperties": false,
         "properties": {
@@ -1377,6 +1417,25 @@
         ],
         "type": "string"
       },
+      "RunControlRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "command": {
+            "enum": ["pause", "resume", "cancel"],
+            "title": "Command",
+            "type": "string"
+          },
+          "idempotencyKey": {
+            "maxLength": 128,
+            "minLength": 16,
+            "title": "Idempotencykey",
+            "type": "string"
+          }
+        },
+        "required": ["command", "idempotencyKey"],
+        "title": "RunControlRequest",
+        "type": "object"
+      },
       "SaveCandidateProfileRequest": {
         "additionalProperties": false,
         "properties": {
@@ -1679,6 +1738,7 @@
           "registering",
           "verifying_email",
           "filling",
+          "paused",
           "awaiting_human",
           "validating",
           "ready_to_submit",
@@ -1695,7 +1755,7 @@
   },
   "info": {
     "title": "CareerFlow Local API",
-    "version": "0.1.9"
+    "version": "0.1.10"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -2447,6 +2507,136 @@
           }
         },
         "summary": "Create Run"
+      }
+    },
+    "/v1/runs/{run_id}/checkpoint": {
+      "get": {
+        "operationId": "get_latest_checkpoint_v1_runs__run_id__checkpoint_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Checkpoint"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "title": "Response Get Latest Checkpoint V1 Runs  Run Id  Checkpoint Get"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Latest Checkpoint"
+      }
+    },
+    "/v1/runs/{run_id}/control": {
+      "post": {
+        "operationId": "control_run_v1_runs__run_id__control_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RunControlRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplicationRun"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Control Run"
       }
     },
     "/v1/runs/{run_id}/events": {

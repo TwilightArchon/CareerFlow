@@ -210,6 +210,40 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/v1/runs/{run_id}/checkpoint': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Get Latest Checkpoint */
+    get: operations['get_latest_checkpoint_v1_runs__run_id__checkpoint_get'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/runs/{run_id}/control': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Control Run */
+    post: operations['control_run_v1_runs__run_id__control_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/v1/runs/{run_id}/events': {
     parameters: {
       query?: never;
@@ -577,6 +611,31 @@ export interface components {
        * Format: date-time
        */
       updatedAt?: string;
+    };
+    /** Checkpoint */
+    Checkpoint: {
+      /**
+       * Createdat
+       * Format: date-time
+       */
+      createdAt?: string;
+      /**
+       * Id
+       * Format: uuid
+       */
+      id?: string;
+      /** Idempotencykey */
+      idempotencyKey: string;
+      /**
+       * Runid
+       * Format: uuid
+       */
+      runId: string;
+      /** Sequence */
+      sequence: number;
+      state: components['schemas']['WorkflowState'];
+      /** Stepid */
+      stepId: string;
     };
     /** ConfirmationEvidence */
     ConfirmationEvidence: {
@@ -976,6 +1035,16 @@ export interface components {
       | 'education.0.degree'
       | 'education.0.field_of_study'
       | 'education.0.graduation_year';
+    /** RunControlRequest */
+    RunControlRequest: {
+      /**
+       * Command
+       * @enum {string}
+       */
+      command: 'pause' | 'resume' | 'cancel';
+      /** Idempotencykey */
+      idempotencyKey: string;
+    };
     /** SaveCandidateProfileRequest */
     SaveCandidateProfileRequest: {
       /** Expectedversion */
@@ -1114,6 +1183,7 @@ export interface components {
       | 'registering'
       | 'verifying_email'
       | 'filling'
+      | 'paused'
       | 'awaiting_human'
       | 'validating'
       | 'ready_to_submit'
@@ -1583,6 +1653,76 @@ export interface operations {
     responses: {
       /** @description Successful Response */
       201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ApplicationRun'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  get_latest_checkpoint_v1_runs__run_id__checkpoint_get: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        run_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Checkpoint'] | null;
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  control_run_v1_runs__run_id__control_post: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        run_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['RunControlRequest'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
         headers: {
           [name: string]: unknown;
         };

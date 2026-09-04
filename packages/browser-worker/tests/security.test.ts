@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { rejectObviousPrivateTarget, requireLoopbackWebSocketUrl } from '../src/security';
 import { classifySensitivity } from '../src/runtime';
+import { RunControlGate } from '../src/run-control';
 import { SYNTHETIC_FORM_HTML, SYNTHETIC_FORM_URL } from '../src/synthetic-form';
 
 describe('browser worker local endpoint validation', () => {
@@ -36,5 +37,18 @@ describe('controlled synthetic form', () => {
     expect(classifySensitivity('First name', 'text')).toBe('ordinary');
     expect(classifySensitivity('Email address', 'email')).toBe('sensitive');
     expect(classifySensitivity('Will you require sponsorship?', 'select')).toBe('legal');
+  });
+});
+
+describe('run control gate', () => {
+  it('blocks actions while paused and permanently after cancellation', () => {
+    const gate = new RunControlGate();
+    gate.apply('run-1', 'pause');
+    expect(() => gate.assertActionAllowed('run-1')).toThrow(/paused/);
+    gate.apply('run-1', 'resume');
+    expect(() => gate.assertActionAllowed('run-1')).not.toThrow();
+    gate.apply('run-1', 'cancel');
+    expect(() => gate.assertActionAllowed('run-1')).toThrow(/cancelled/);
+    expect(() => gate.apply('run-1', 'resume')).toThrow(/cannot be resumed/);
   });
 });

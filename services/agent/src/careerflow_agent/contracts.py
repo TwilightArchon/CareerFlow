@@ -44,6 +44,7 @@ class WorkflowState(StrEnum):
     REGISTERING = "registering"
     VERIFYING_EMAIL = "verifying_email"
     FILLING = "filling"
+    PAUSED = "paused"
     AWAITING_HUMAN = "awaiting_human"
     VALIDATING = "validating"
     READY_TO_SUBMIT = "ready_to_submit"
@@ -430,7 +431,18 @@ class BrowserAction(Contract):
 
 
 class BrowserActionResult(Contract):
+    type: Literal["action_result"] = "action_result"
     action_id: UUID
+    run_id: UUID
+    action: Literal[
+        "navigate",
+        "open_synthetic_form",
+        "fill",
+        "scan",
+        "pause",
+        "resume",
+        "cancel",
+    ]
     ok: bool
     page_state_hash: str | None = None
     error_code: str | None = None
@@ -637,6 +649,11 @@ class CreateRunRequest(Contract):
 class StartSyntheticDemoRequest(Contract):
     candidate_profile_id: UUID
     candidate_profile_version: int = Field(ge=1)
+
+
+class RunControlRequest(Contract):
+    command: Literal["pause", "resume", "cancel"]
+    idempotency_key: Annotated[str, Field(min_length=16, max_length=128)]
 
 
 class TransitionRequest(Contract):

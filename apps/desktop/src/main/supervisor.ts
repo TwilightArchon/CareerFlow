@@ -20,6 +20,7 @@ import {
   ResumeImportResultSchema,
   ResumePreviewResultSchema,
   RecordApplicationOutcomeRequestSchema,
+  RunControlRequestSchema,
   type ApplicationOutcome,
   type ApplicationRun,
   type ApplicationStatistics,
@@ -32,6 +33,7 @@ import {
   type ResumeImportResult,
   type ResumePreviewResult,
   type RecordApplicationOutcomeRequest,
+  type RunControlRequest,
 } from '@careerflow/contracts';
 
 const tracer = trace.getTracer('careerflow.desktop.supervisor');
@@ -75,7 +77,7 @@ export class ProcessSupervisor {
       this.readiness ?? {
         status: 'starting',
         service: 'careerflow-agent',
-        version: '0.1.9',
+        version: '0.1.10',
         browserWorkerConnected: false,
         databaseReady: false,
         telemetryReady: false,
@@ -226,6 +228,24 @@ export class ProcessSupervisor {
     });
     if (!response.ok) throw await this.responseError(response);
     return ApplicationStatisticsSchema.parse(await response.json());
+  }
+
+  async controlRun(runId: string, input: RunControlRequest): Promise<ApplicationRun> {
+    if (!this.port || !this.token) throw new Error('Local service is not ready');
+    const request = RunControlRequestSchema.parse(input);
+    const response = await fetch(
+      `http://127.0.0.1:${this.port}/v1/runs/${encodeURIComponent(runId)}/control`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${this.token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(request),
+      },
+    );
+    if (!response.ok) throw await this.responseError(response);
+    return ApplicationRunSchema.parse(await response.json());
   }
 
   async getProfile(): Promise<CandidateProfileSnapshot | null> {

@@ -61,4 +61,6 @@ The Safe Autofill Lab is an app-owned HTML fixture served in memory by the brows
 
 Application outcomes contain a constrained status, stable reason code, revision linkage, actor type, timestamp, and optional confirmation metadata. User corrections contain no free-form text. Their fingerprints are derived from non-secret run/outcome identifiers, and aggregate APIs return counts and rates only.
 
+Run-control requests carry bounded idempotency keys and a fixed pause/resume/cancel command enum. Checkpoints contain only run identifiers, workflow state, sequence, step, idempotency, and timestamp. The worker and service both enforce paused/cancelled state, and cancel never attempts to interrupt or retry an already-submitting irreversible action.
+
 Public repository documentation is candidate-agnostic, and public commits use a GitHub noreply identity. Real profile data, private working notes, generated applications, and local artifacts remain outside version control.

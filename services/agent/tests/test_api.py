@@ -510,6 +510,99 @@ async def test_submission_requires_authorization(client: httpx.AsyncClient) -> N
     assert blocked.status_code == 409
 
 
+async def test_run_controls_checkpoint_pause_resume_and_cancel(
+    client: httpx.AsyncClient,
+) -> None:
+    class BrowserSocket:
+        def __init__(self) -> None:
+            self.messages: list[dict[str, object]] = []
+
+        async def send_json(self, message: dict[str, object]) -> None:
+            self.messages.append(message)
+
+    app = client._transport.app  # type: ignore[attr-defined]
+    service = app.state.service
+    socket = BrowserSocket()
+    service.browser_socket = socket
+    service.browser_worker_connected = True
+
+    created = await client.post(
+        "/v1/runs",
+        json={
+            "job_id": str(uuid4()),
+            "candidate_profile_id": str(uuid4()),
+            "candidate_profile_version": 1,
+            "auto_submit_authorized": False,
+            "job_url": "https://example.com/jobs/controlled",
+            "start_immediately": False,
+        },
+    )
+    run_id = created.json()["id"]
+    pause_request = {
+        "command": "pause",
+        "idempotency_key": "user-pause-control-0001",
+    }
+    paused = await client.post(f"/v1/runs/{run_id}/control", json=pause_request)
+    assert paused.status_code == 200
+    assert paused.json()["state"] == "paused"
+    assert socket.messages[-1]["action"] == "pause"
+
+    checkpoint = await client.get(f"/v1/runs/{run_id}/checkpoint")
+    assert checkpoint.status_code == 200
+    assert checkpoint.json()["state"] == "created"
+    assert checkpoint.json()["sequence"] == 1
+
+    repeated_pause = await client.post(f"/v1/runs/{run_id}/control", json=pause_request)
+    assert repeated_pause.status_code == 200
+    assert repeated_pause.json()["state"] == "paused"
+    assert len(socket.messages) == 1
+
+    stale_automation = await client.post(
+        f"/v1/runs/{run_id}/transitions",
+        json={
+            "to_state": "filling",
+            "reason_code": "late_browser_result",
+            "idempotency_key": "late-browser-result-0001",
+        },
+    )
+    assert stale_automation.status_code == 409
+
+    resumed = await client.post(
+        f"/v1/runs/{run_id}/control",
+        json={
+            "command": "resume",
+            "idempotency_key": "user-resume-control-0001",
+        },
+    )
+    assert resumed.status_code == 200
+    assert resumed.json()["state"] == "created"
+    assert socket.messages[-1]["action"] == "resume"
+
+    cancelled = await client.post(
+        f"/v1/runs/{run_id}/control",
+        json={
+            "command": "cancel",
+            "idempotency_key": "user-cancel-control-0001",
+        },
+    )
+    assert cancelled.status_code == 200
+    assert cancelled.json()["state"] == "cancelled"
+    assert cancelled.json()["latestOutcome"]["outcome"] == "cancelled"
+    assert socket.messages[-1]["action"] == "cancel"
+
+    cannot_resume = await client.post(
+        f"/v1/runs/{run_id}/control",
+        json={
+            "command": "resume",
+            "idempotency_key": "user-resume-control-0002",
+        },
+    )
+    assert cannot_resume.status_code == 409
+
+    events = await client.get(f"/v1/runs/{run_id}/events")
+    assert [event["toState"] for event in events.json()] == ["paused", "created", "cancelled"]
+
+
 async def test_synthetic_demo_creates_durable_run_and_starts_typed_scan(
     client: httpx.AsyncClient, tmp_path: Path
 ) -> None:

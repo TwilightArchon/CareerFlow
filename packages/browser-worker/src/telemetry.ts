@@ -13,7 +13,7 @@ export function startTelemetry(): NodeSDK {
   const sdk = new NodeSDK({
     resource: resourceFromAttributes({
       [ATTR_SERVICE_NAME]: 'careerflow-browser-worker',
-      [ATTR_SERVICE_VERSION]: '0.1.9',
+      [ATTR_SERVICE_VERSION]: '0.1.10',
     }),
     ...(endpoint
       ? {
