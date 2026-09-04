@@ -5,7 +5,7 @@ from enum import StrEnum
 from typing import Annotated, Any, Literal
 from uuid import UUID, uuid4
 
-from pydantic import AnyHttpUrl, BaseModel, ConfigDict, Field, field_validator
+from pydantic import AnyHttpUrl, BaseModel, ConfigDict, Field, field_validator, model_validator
 from pydantic.alias_generators import to_camel
 
 SCHEMA_VERSION: Literal["1.0.0"] = "1.0.0"
@@ -82,6 +82,39 @@ class OutcomeType(StrEnum):
     CANCELLED = "cancelled"
     ABANDONED = "abandoned"
     OUTCOME_UNCERTAIN = "outcome_uncertain"
+
+
+class OutcomeReasonCode(StrEnum):
+    USER_CONFIRMED_SUBMITTED = "user_confirmed_submitted"
+    INGESTION_FAILED = "ingestion_failed"
+    EVIDENCE_MISSING = "evidence_missing"
+    AUTHENTICATION_FAILED = "authentication_failed"
+    REGISTRATION_FAILED = "registration_failed"
+    VERIFICATION_FAILED = "verification_failed"
+    MAPPING_FAILED = "mapping_failed"
+    VALIDATION_FAILED = "validation_failed"
+    SUBMISSION_FAILED = "submission_failed"
+    PLATFORM_CHANGED = "platform_changed"
+    POLICY_BLOCKED = "policy_blocked"
+    USER_CANCELLED = "user_cancelled"
+    USER_ABANDONED = "user_abandoned"
+    CONFIRMATION_MISSING = "confirmation_missing"
+
+
+class JobIngestionStatus(StrEnum):
+    COMPLETE = "complete"
+    NEEDS_REVIEW = "needs_review"
+
+
+class RequirementSupport(StrEnum):
+    SUPPORTED = "supported"
+    PARTIAL = "partial"
+    UNSUPPORTED = "unsupported"
+
+
+class MaterialPlanStatus(StrEnum):
+    NEEDS_REVIEW = "needs_review"
+    NEEDS_EVIDENCE = "needs_evidence"
 
 
 class TraceContext(Contract):
@@ -201,6 +234,34 @@ class ResumeImportResult(Contract):
     document: SourceDocument
 
 
+type ResumeSuggestionPath = Literal[
+    "identity.first_name",
+    "identity.last_name",
+    "contact.email",
+    "contact.phone",
+    "links.linkedin",
+    "links.github",
+    "education.0.school",
+    "education.0.degree",
+    "education.0.field_of_study",
+    "education.0.graduation_year",
+]
+
+
+class ResumeFieldSuggestion(Contract):
+    canonical_path: ResumeSuggestionPath
+    value: str
+    confidence: float = Field(ge=0, le=1)
+    source_span: SourceSpan
+
+
+class ResumePreviewResult(Contract):
+    status: DocumentStatus
+    parse_error_code: str | None = None
+    extracted_evidence_count: int = Field(ge=0)
+    suggestions: list[ResumeFieldSuggestion] = Field(default_factory=list)
+
+
 class SetEvidenceVerificationRequest(Contract):
     expected_version: int = Field(ge=1)
     verified: bool
@@ -221,12 +282,80 @@ class PlatformDetection(Contract):
 
 class JobPosting(Contract):
     id: UUID = Field(default_factory=uuid4)
+    version: int = Field(default=1, ge=1)
+    supersedes_id: UUID | None = None
     source_url: AnyHttpUrl
+    canonical_url: AnyHttpUrl
+    resolved_url: AnyHttpUrl
     title: str
     company: str
+    location: str = ""
+    description: str
     description_hash: str = Field(pattern=r"^[a-f0-9]{64}$")
     requirements: list[JobRequirement] = Field(default_factory=list)
     platform: PlatformDetection
+    status: JobIngestionStatus
+    warnings: list[str] = Field(default_factory=list)
+    retrieved_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+
+class IngestJobRequest(Contract):
+    url: AnyHttpUrl
+
+
+class PrepareMaterialsRequest(Contract):
+    job_id: UUID
+    candidate_profile_id: UUID
+    candidate_profile_version: int = Field(ge=1)
+
+
+class EvidenceMatch(Contract):
+    evidence_id: UUID
+    statement: str
+    source_document_id: UUID | None = None
+    source_span: SourceSpan | None = None
+    score: float = Field(ge=0, le=1)
+    matched_terms: list[str] = Field(default_factory=list)
+
+
+class RequirementEvidenceMapping(Contract):
+    requirement_id: UUID
+    requirement_text: str
+    required: bool
+    support: RequirementSupport
+    confidence: float = Field(ge=0, le=1)
+    matches: list[EvidenceMatch] = Field(default_factory=list)
+    explanation: str
+
+
+class GroundedResumeEntry(Contract):
+    evidence_id: UUID
+    statement: str
+    source_document_id: UUID | None = None
+    source_span: SourceSpan | None = None
+    supports_requirement_ids: list[UUID] = Field(default_factory=list)
+
+
+class GroundedResumeDraft(Contract):
+    title: str
+    entries: list[GroundedResumeEntry] = Field(default_factory=list)
+
+
+class ApplicationMaterialPlan(Contract):
+    job_id: UUID
+    job_version: int = Field(ge=1)
+    candidate_profile_id: UUID
+    candidate_profile_version: int = Field(ge=1)
+    generator_version: Literal["deterministic-v1"] = "deterministic-v1"
+    status: MaterialPlanStatus
+    coverage_ratio: float = Field(ge=0, le=1)
+    supported_count: int = Field(ge=0)
+    partial_count: int = Field(ge=0)
+    unsupported_count: int = Field(ge=0)
+    mappings: list[RequirementEvidenceMapping] = Field(default_factory=list)
+    resume_draft: GroundedResumeDraft
+    model_used: Literal[False] = False
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
 class FormControl(Contract):
@@ -255,10 +384,34 @@ class FieldMapping(Contract):
     rationale: str
 
 
+class FieldExplanation(Contract):
+    id: UUID = Field(default_factory=uuid4)
+    run_id: UUID
+    step_id: str = Field(min_length=1, max_length=128)
+    page_state_hash: str = Field(min_length=1, max_length=128)
+    control_id: str = Field(min_length=1, max_length=200)
+    canonical_path: str | None = Field(default=None, max_length=200)
+    source: Literal["adapter", "deterministic", "model", "user"]
+    confidence: float = Field(ge=0, le=1)
+    sensitivity: Sensitivity
+    decision: MappingDecision
+    rationale: str = Field(min_length=1, max_length=500)
+    filled: bool
+    recorded_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+
 class FieldValue(Contract):
     canonical_path: str
     value: str
     evidence_ids: list[UUID]
+
+
+class BrowserFieldFill(Contract):
+    control_id: str = Field(min_length=1, max_length=200)
+    canonical_path: str = Field(min_length=1, max_length=200)
+    value: str = Field(max_length=10_000)
+    evidence_ids: list[UUID]
+    rationale: str = Field(min_length=1, max_length=500)
 
 
 class PolicyDecision(Contract):
@@ -286,17 +439,46 @@ class BrowserActionResult(Contract):
 class BrowserCommand(Contract):
     type: Literal["command"] = "command"
     command_id: UUID = Field(default_factory=uuid4)
-    action: Literal["navigate", "scan", "pause", "resume", "cancel"]
+    action: Literal[
+        "navigate",
+        "open_synthetic_form",
+        "fill",
+        "scan",
+        "pause",
+        "resume",
+        "cancel",
+    ]
     url: AnyHttpUrl | None = None
     browser_profile_dir: str | None = None
+    expected_page_state_hash: str | None = Field(default=None, min_length=1, max_length=128)
+    fills: list[BrowserFieldFill] = Field(default_factory=list)
+    blocked_mappings: list[FieldMapping] = Field(default_factory=list)
     envelope: ActionMetadata
 
 
 class ConfirmationEvidence(Contract):
     kind: Literal["confirmation_page", "application_id", "confirmation_email", "user_correction"]
     captured_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
-    fingerprint: str
+    fingerprint: str = Field(pattern=r"^[a-f0-9]{64}$")
     artifact_ref: str | None = None
+
+
+class ApplicationOutcome(Contract):
+    id: UUID = Field(default_factory=uuid4)
+    run_id: UUID
+    revision: int = Field(ge=1)
+    supersedes_id: UUID | None = None
+    outcome: OutcomeType
+    reason_code: OutcomeReasonCode
+    confirmation: list[ConfirmationEvidence] = Field(default_factory=list)
+    recorded_by: Literal["user"] = "user"
+    recorded_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+    @model_validator(mode="after")
+    def require_submission_confirmation(self) -> ApplicationOutcome:
+        if self.outcome is OutcomeType.SUBMITTED and not self.confirmation:
+            raise ValueError("submitted outcomes require confirmation evidence")
+        return self
 
 
 class ApplicationRun(Contract):
@@ -305,7 +487,11 @@ class ApplicationRun(Contract):
     candidate_profile_id: UUID
     candidate_profile_version: int = Field(ge=1)
     job_url: AnyHttpUrl
+    job_title: str | None = None
+    company: str | None = None
+    platform: Platform | None = None
     state: WorkflowState = WorkflowState.CREATED
+    latest_outcome: ApplicationOutcome | None = None
     auto_submit_authorized: bool = False
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
@@ -361,11 +547,50 @@ class InterventionResponse(Contract):
     page_state_hash: str | None = None
 
 
-class ApplicationOutcome(Contract):
-    run_id: UUID
+class RecordApplicationOutcomeRequest(Contract):
     outcome: OutcomeType
-    reason_code: str
-    confirmation: list[ConfirmationEvidence] = Field(default_factory=list)
+    reason_code: OutcomeReasonCode
+    confirmed_by_user: Literal[True]
+
+    @model_validator(mode="after")
+    def validate_reason_for_outcome(self) -> RecordApplicationOutcomeRequest:
+        allowed: dict[OutcomeType, frozenset[OutcomeReasonCode]] = {
+            OutcomeType.SUBMITTED: frozenset({OutcomeReasonCode.USER_CONFIRMED_SUBMITTED}),
+            OutcomeType.FAILED: frozenset(
+                {
+                    OutcomeReasonCode.INGESTION_FAILED,
+                    OutcomeReasonCode.EVIDENCE_MISSING,
+                    OutcomeReasonCode.AUTHENTICATION_FAILED,
+                    OutcomeReasonCode.REGISTRATION_FAILED,
+                    OutcomeReasonCode.VERIFICATION_FAILED,
+                    OutcomeReasonCode.MAPPING_FAILED,
+                    OutcomeReasonCode.VALIDATION_FAILED,
+                    OutcomeReasonCode.SUBMISSION_FAILED,
+                    OutcomeReasonCode.PLATFORM_CHANGED,
+                    OutcomeReasonCode.POLICY_BLOCKED,
+                }
+            ),
+            OutcomeType.CANCELLED: frozenset({OutcomeReasonCode.USER_CANCELLED}),
+            OutcomeType.ABANDONED: frozenset({OutcomeReasonCode.USER_ABANDONED}),
+            OutcomeType.OUTCOME_UNCERTAIN: frozenset({OutcomeReasonCode.CONFIRMATION_MISSING}),
+        }
+        if self.reason_code not in allowed[self.outcome]:
+            raise ValueError("reason_code is not valid for the selected outcome")
+        return self
+
+
+class ApplicationStatistics(Contract):
+    total_runs: int = Field(ge=0)
+    resolved_runs: int = Field(ge=0)
+    pending_runs: int = Field(ge=0)
+    submitted: int = Field(ge=0)
+    failed: int = Field(ge=0)
+    cancelled: int = Field(ge=0)
+    abandoned: int = Field(ge=0)
+    outcome_uncertain: int = Field(ge=0)
+    resolution_rate: float = Field(ge=0, le=1)
+    submitted_rate: float = Field(ge=0, le=1)
+    generated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
 class ModelCallRecord(Contract):
@@ -407,6 +632,11 @@ class CreateRunRequest(Contract):
         ):
             raise ValueError("Local and private job URLs are not permitted")
         return value
+
+
+class StartSyntheticDemoRequest(Contract):
+    candidate_profile_id: UUID
+    candidate_profile_version: int = Field(ge=1)
 
 
 class TransitionRequest(Contract):

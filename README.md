@@ -8,13 +8,17 @@ CareerFlow is a desktop-first, supervised job-application agent. A user pastes a
 - Browser automation: Playwright with a dedicated persistent browser profile
 - AI and workflow service: Python 3.13, FastAPI, Pydantic, LangGraph, and the OpenAI Responses API boundary
 - Data: local SQLite workflow records plus AES-256-GCM encrypted-payload support and macOS Keychain references
-- Tracking: restored application queue and local Applications history backed by durable workflow state
-- Profile vault: verified manual-entry facts in immutable AES-256-GCM encrypted versions with the key held in macOS Keychain
+- Tracking: restored application history, append-only user-confirmed outcome revisions, stable reason codes, outcome/platform filters, and locally reconciled statistics
+- Explainability: durable per-run field decisions show what was filled or held for review and why, without displaying saved candidate values
+- Profile vault: token-free résumé-first profile suggestions, including PDF-embedded LinkedIn/GitHub profile links, plus verified facts in immutable AES-256-GCM encrypted versions with the key held in macOS Keychain
+- Grounded preparation: local requirement-to-evidence matching, explicit coverage gaps, and a verbatim review draft sourced only from verified evidence
+- Safe autofill lab: an app-owned visible-browser form that scans conventional controls, deterministically maps verified profile facts, fills only policy-approved ordinary fields, and stops without submission
+- Job review: guarded public-page retrieval, deterministic structured-metadata and requirement extraction, platform detection, and versioned local records before browser navigation
 - Résumé evidence: local selectable-text PDF and DOCX parsing, encrypted source artifacts, page/section provenance, and explicit evidence review
 - Observability and quality: OpenTelemetry, bounded redacted diagnostics, pytest, Ruff, Vitest, and generated OpenAPI contracts
 - Security: operating-system keychain, OAuth, encrypted local data, explicit policy and approval gates
 
-Workday automation, Gmail OAuth, résumé generation, semantic fallback, and complete form filling are not implemented yet. Image-only PDFs are retained securely but still require a future OCR step.
+Real ATS form filling, Workday automation, Gmail OAuth, résumé generation, and semantic fallback are not implemented yet. Image-only PDFs are retained securely but still require a future OCR step.
 
 ## Development requirements
 
@@ -34,6 +38,7 @@ pnpm contracts:generate
 pnpm check
 pnpm python:typecheck
 pnpm test
+pnpm browser:test:integration
 pnpm dev
 ```
 
@@ -53,4 +58,4 @@ Optional local traces are available after `pnpm telemetry:up`; open Jaeger at `h
 
 ## Current status
 
-Foundation, encrypted résumé-evidence, and supervised-navigation slice. The desktop UI, encrypted profile onboarding, local PDF/DOCX import and evidence review, typed contracts, durable state transitions and restored run history, policy tests, visible browser worker, and telemetry build successfully. It is not ready for real automated applications.
+Foundation, deterministic job review, encrypted résumé-evidence, grounded material preparation, supervised navigation, a controlled synthetic form-filling slice, and durable application tracking. The Safe Autofill Lab demonstrates visible scanning, canonical field mapping, policy-gated filling, stale-page protection, and a durable review-required state without contacting or submitting to an employer. Users can explicitly record and correct outcomes, filter history, and view statistics derived from local records. It is not ready for real automated applications.

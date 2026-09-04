@@ -40,6 +40,20 @@ function createWindow(): BrowserWindow {
 app.whenReady().then(async () => {
   ipcMain.handle('system:get-health', () => supervisor.refreshHealth());
   ipcMain.handle('runs:list', () => supervisor.listRuns());
+  ipcMain.handle('runs:field-explanations:list', (_event, input: { runId: string }) =>
+    supervisor.listFieldExplanations(input.runId),
+  );
+  ipcMain.handle(
+    'runs:outcome:record',
+    (
+      _event,
+      input: {
+        runId: string;
+        outcome: import('@careerflow/contracts').RecordApplicationOutcomeRequest;
+      },
+    ) => supervisor.recordApplicationOutcome(input.runId, input.outcome),
+  );
+  ipcMain.handle('applications:statistics', () => supervisor.getApplicationStatistics());
   ipcMain.handle('profile:get', () => supervisor.getProfile());
   ipcMain.handle(
     'profile:save',
@@ -64,15 +78,41 @@ app.whenReady().then(async () => {
     ) => supervisor.importResume(input),
   );
   ipcMain.handle(
+    'profile:resume:preview',
+    (
+      _event,
+      input: {
+        filename: string;
+        mediaType: string;
+        bytes: Uint8Array;
+      },
+    ) => supervisor.previewResume(input),
+  );
+  ipcMain.handle(
     'profile:evidence:verify',
     (_event, input: { evidenceId: string; verified: boolean; expectedVersion: number }) =>
       supervisor.setEvidenceVerification(input.evidenceId, input.verified, input.expectedVersion),
   );
+  ipcMain.handle('jobs:ingest', (_event, input: { url: string }) =>
+    supervisor.ingestJob(input.url),
+  );
+  ipcMain.handle(
+    'materials:prepare',
+    (
+      _event,
+      input: {
+        jobId: string;
+        candidateProfileId: string;
+        candidateProfileVersion: number;
+      },
+    ) => supervisor.prepareMaterials(input),
+  );
   ipcMain.handle(
     'runs:create',
-    (_event, input: { jobUrl: string; autoSubmitAuthorized: boolean }) =>
-      supervisor.createRun(input.jobUrl, input.autoSubmitAuthorized),
+    (_event, input: { jobId: string; jobUrl: string; autoSubmitAuthorized: boolean }) =>
+      supervisor.createRun(input.jobId, input.jobUrl, input.autoSubmitAuthorized),
   );
+  ipcMain.handle('demo:synthetic:start', () => supervisor.startSyntheticDemo());
   mainWindow = createWindow();
   try {
     await supervisor.start();

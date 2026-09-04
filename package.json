@@ -1,6 +1,6 @@
 {
   "name": "careerflow",
-  "version": "0.1.5",
+  "version": "0.1.9",
   "private": true,
   "description": "Local-first supervised job application agent",
   "packageManager": "pnpm@10.15.1",
@@ -19,6 +19,7 @@
     "python:typecheck": "./scripts/uv.sh run --project services/agent --no-sync mypy services/agent/src",
     "python:format": "./scripts/uv.sh run --project services/agent --no-sync ruff format services/agent scripts",
     "python:test": "./scripts/uv.sh run --project services/agent --no-sync pytest services/agent/tests",
+    "browser:test:integration": "pnpm --filter @careerflow/browser-worker test:integration",
     "contracts:generate": "./scripts/uv.sh run --project services/agent --no-sync python scripts/export_openapi.py && pnpm --filter @careerflow/contracts generate && pnpm exec prettier --write packages/contracts/openapi.json packages/contracts/src/generated.ts",
     "runtime:prepare": "./scripts/prepare-python-runtime.sh",
     "package:verify": "node scripts/verify-packaged-app.mjs",

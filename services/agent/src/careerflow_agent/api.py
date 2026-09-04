@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import hmac
 import json
 from collections.abc import AsyncIterator
@@ -23,31 +24,62 @@ from fastapi import (
 )
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
+from opentelemetry import metrics
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
 from opentelemetry.propagate import inject
 from opentelemetry.trace import get_tracer
+from pydantic import AnyHttpUrl
 
 from . import __version__
 from .config import Settings, get_settings
 from .contracts import (
     ActionMetadata,
+    ApplicationMaterialPlan,
+    ApplicationOutcome,
     ApplicationRun,
+    ApplicationStatistics,
     BrowserCommand,
     CandidateProfileSnapshot,
     CreateRunRequest,
+    DocumentStatus,
+    FieldExplanation,
+    FieldMapping,
     HealthStatus,
+    IngestJobRequest,
+    JobIngestionStatus,
+    JobPosting,
+    JobRequirement,
+    ObservedForm,
+    Platform,
+    PlatformDetection,
+    PrepareMaterialsRequest,
+    RecordApplicationOutcomeRequest,
     ResumeImportResult,
+    ResumePreviewResult,
     SaveCandidateProfileRequest,
     SetEvidenceVerificationRequest,
+    SourceSpan,
+    StartSyntheticDemoRequest,
     TraceContext,
     TransitionRequest,
     WorkflowEvent,
     WorkflowState,
 )
 from .database import Database
-from .document_parser import MAX_RESUME_BYTES, SUPPORTED_RESUME_MEDIA_TYPES, ResumeMediaType
+from .document_parser import (
+    MAX_RESUME_BYTES,
+    PDF_MEDIA_TYPE,
+    SUPPORTED_RESUME_MEDIA_TYPES,
+    ResumeMediaType,
+    ResumeParseError,
+    extract_profile_suggestions,
+    parse_resume,
+)
+from .form_mapping import plan_form_fill
+from .job_ingestion import JobIngestionError, JobIngestionService
 from .keychain import KeychainSecretStore, KeychainUnavailableError
+from .material_preparation import prepare_application_materials
 from .profile_vault import (
     EvidenceNotFoundError,
     ProfileKeyUnavailableError,
@@ -61,6 +93,15 @@ from .telemetry import configure_telemetry
 from .workflow import InvalidTransitionError, RunNotFoundError, WorkflowService
 
 tracer = get_tracer("careerflow.agent.documents")
+tracking_tracer = get_tracer("careerflow.agent.application_tracking")
+tracking_meter = metrics.get_meter("careerflow.agent.application_tracking")
+OUTCOME_WRITE_REQUESTS = tracking_meter.create_counter("application_outcome_write_requests_total")
+
+SYNTHETIC_FORM_URL = "https://synthetic.careerflow.invalid/application"
+SYNTHETIC_DESCRIPTION = (
+    "Controlled local CareerFlow test form for deterministic scanning, policy evaluation, "
+    "and supervised filling. It cannot submit data to an employer."
+)
 
 
 class ServiceState:
@@ -68,6 +109,7 @@ class ServiceState:
         self.settings = settings
         self.database = Database(settings.database_url)
         self.workflow = WorkflowService(self.database)
+        self.job_ingestion = JobIngestionService(self.database)
         self.profile_vault = ProfileVault(self.database, secret_store, settings.data_dir)
         self.browser_worker_connected = False
         self.browser_socket: WebSocket | None = None
@@ -101,6 +143,153 @@ class ServiceState:
         )
         await self.browser_socket.send_json(
             command.model_dump(mode="json", by_alias=True, exclude_none=True)
+        )
+
+    async def open_synthetic_form(self, run: ApplicationRun) -> None:
+        if self.browser_socket is None:
+            raise RuntimeError("Browser worker is not connected")
+        carrier: dict[str, str] = {}
+        inject(carrier)
+        command = BrowserCommand(
+            action="open_synthetic_form",
+            envelope=ActionMetadata(
+                run_id=run.id,
+                step_id="synthetic_form_scan",
+                idempotency_key=f"synthetic-form-scan-{run.id}",
+                authorization_scope="inspect",
+                redaction_policy="metadata_only",
+                trace_context=TraceContext(traceparent=carrier.get("traceparent")),
+            ),
+        )
+        await self.browser_socket.send_json(
+            command.model_dump(mode="json", by_alias=True, exclude_none=True)
+        )
+
+    async def handle_observed_form(
+        self, *, run_id: UUID, action_id: str, observed_form: ObservedForm
+    ) -> None:
+        if self.browser_socket is None:
+            raise RuntimeError("Browser worker is not connected")
+        run = await self.database.get_run(run_id)
+        snapshot = await self.profile_vault.load()
+        if run is None:
+            raise RunNotFoundError(str(run_id))
+        if (
+            run.platform is not Platform.SYNTHETIC
+            or str(observed_form.page_url) != SYNTHETIC_FORM_URL
+        ):
+            await self.workflow.transition(
+                run_id=run_id,
+                to_state=WorkflowState.AWAITING_HUMAN,
+                reason_code="unexpected_form_observation",
+                idempotency_key=f"unexpected-form-{action_id}",
+            )
+            return
+        if (
+            snapshot is None
+            or snapshot.profile.id != run.candidate_profile_id
+            or snapshot.profile.version != run.candidate_profile_version
+        ):
+            await self.workflow.transition(
+                run_id=run_id,
+                to_state=WorkflowState.AWAITING_HUMAN,
+                reason_code="profile_version_changed_before_fill",
+                idempotency_key=f"synthetic-profile-stale-{action_id}",
+            )
+            return
+
+        fills, mappings, blocked = plan_form_fill(observed_form, snapshot.profile)
+        await self.database.save_field_explanations(
+            run_id=run_id,
+            step_id="synthetic_form_fill",
+            page_state_hash=observed_form.page_state_hash,
+            mappings=mappings,
+            filled_control_ids=set(),
+        )
+        await self.workflow.transition(
+            run_id=run_id,
+            to_state=WorkflowState.FILLING,
+            reason_code="synthetic_form_scanned",
+            idempotency_key=f"synthetic-scan-result-{action_id}",
+            safe_details={
+                "observed_control_count": len(observed_form.controls),
+                "approved_fill_count": len(fills),
+                "review_required_count": len(blocked),
+            },
+        )
+        carrier: dict[str, str] = {}
+        inject(carrier)
+        command = BrowserCommand(
+            action="fill",
+            expected_page_state_hash=observed_form.page_state_hash,
+            fills=fills,
+            blocked_mappings=blocked,
+            envelope=ActionMetadata(
+                run_id=run_id,
+                step_id="synthetic_form_fill",
+                idempotency_key=f"synthetic-form-fill-{run_id}",
+                authorization_scope="fill",
+                redaction_policy="sensitive",
+                trace_context=TraceContext(traceparent=carrier.get("traceparent")),
+            ),
+        )
+        await self.browser_socket.send_json(
+            command.model_dump(mode="json", by_alias=True, exclude_none=True)
+        )
+
+    async def handle_fill_result(
+        self,
+        *,
+        run_id: UUID,
+        action_id: str,
+        ok: bool,
+        page_state_hash: str | None,
+        filled_mappings: list[FieldMapping],
+        blocked_mappings: list[FieldMapping],
+    ) -> None:
+        run = await self.database.get_run(run_id)
+        if run is None:
+            raise RunNotFoundError(str(run_id))
+        if run.platform is not Platform.SYNTHETIC:
+            raise InvalidTransitionError("Synthetic fill results require a synthetic run")
+        filled_count = len(filled_mappings)
+        blocked_count = len(blocked_mappings)
+        if page_state_hash:
+            await self.database.save_field_explanations(
+                run_id=run_id,
+                step_id="synthetic_form_fill",
+                page_state_hash=page_state_hash,
+                mappings=[*filled_mappings, *blocked_mappings],
+                filled_control_ids={mapping.control_id for mapping in filled_mappings},
+            )
+        if not ok:
+            await self.workflow.transition(
+                run_id=run_id,
+                to_state=WorkflowState.AWAITING_HUMAN,
+                reason_code="synthetic_form_fill_failed",
+                idempotency_key=f"synthetic-fill-failed-{action_id}",
+            )
+            return
+        await self.workflow.transition(
+            run_id=run_id,
+            to_state=WorkflowState.VALIDATING,
+            reason_code="synthetic_form_fill_complete",
+            idempotency_key=f"synthetic-fill-result-{action_id}",
+            safe_details={
+                "filled_control_count": filled_count,
+                "review_required_count": blocked_count,
+            },
+        )
+        await self.workflow.transition(
+            run_id=run_id,
+            to_state=(
+                WorkflowState.AWAITING_HUMAN if blocked_count else WorkflowState.READY_TO_SUBMIT
+            ),
+            reason_code=(
+                "synthetic_form_review_required" if blocked_count else "synthetic_form_validated"
+            ),
+            idempotency_key=f"synthetic-review-result-{action_id}",
+            safe_details={"review_required_count": blocked_count},
         )
 
 
@@ -216,6 +405,48 @@ def create_app(
         except (KeychainUnavailableError, ProfileKeyUnavailableError) as error:
             raise HTTPException(status_code=503, detail=str(error)) from error
 
+    @app.post("/v1/profile/resume/preview", response_model=ResumePreviewResult)
+    async def preview_resume(
+        file: Annotated[UploadFile, File()],
+        _auth: None = Depends(require_token),
+    ) -> ResumePreviewResult:
+        media_type = file.content_type or ""
+        if media_type not in SUPPORTED_RESUME_MEDIA_TYPES:
+            raise HTTPException(status_code=415, detail="Choose a PDF or DOCX résumé")
+        content = await file.read(MAX_RESUME_BYTES + 1)
+        if not content:
+            raise HTTPException(status_code=422, detail="The résumé file is empty")
+        if len(content) > MAX_RESUME_BYTES:
+            raise HTTPException(status_code=413, detail="Résumé files must be 10 MB or smaller")
+        try:
+            with tracer.start_as_current_span("document.preview") as span:
+                span.set_attribute("document.media_type", media_type)
+                statements = parse_resume(content, cast(ResumeMediaType, media_type))
+                status_value = (
+                    DocumentStatus.PARSED
+                    if statements
+                    else DocumentStatus.NEEDS_OCR
+                    if media_type == PDF_MEDIA_TYPE
+                    else DocumentStatus.FAILED
+                )
+                error_code = None if statements else "selectable_text_unavailable"
+                suggestions = extract_profile_suggestions(statements)
+                span.set_attribute("document.status", status_value)
+                span.set_attribute("document.evidence_count", len(statements))
+                span.set_attribute("document.suggestion_count", len(suggestions))
+                return ResumePreviewResult(
+                    status=status_value,
+                    parse_error_code=error_code,
+                    extracted_evidence_count=len(statements),
+                    suggestions=suggestions,
+                )
+        except ResumeParseError as error:
+            return ResumePreviewResult(
+                status=DocumentStatus.FAILED,
+                parse_error_code=error.error_code,
+                extracted_evidence_count=0,
+            )
+
     @app.put(
         "/v1/profile/evidence/{evidence_id}/verification",
         response_model=CandidateProfileSnapshot,
@@ -238,6 +469,70 @@ def create_app(
         except (KeychainUnavailableError, ProfileKeyUnavailableError) as error:
             raise HTTPException(status_code=503, detail=str(error)) from error
 
+    @app.post("/v1/jobs/ingest", response_model=JobPosting)
+    async def ingest_job(
+        request: IngestJobRequest,
+        _auth: None = Depends(require_token),
+    ) -> JobPosting:
+        try:
+            with tracer.start_as_current_span("job.ingest") as span:
+                result = await state.job_ingestion.ingest(str(request.url))
+                span.set_attribute("job.id", str(result.id))
+                span.set_attribute("job.platform", result.platform.platform)
+                span.set_attribute("job.status", result.status)
+                span.set_attribute("job.requirement_count", len(result.requirements))
+                return result
+        except JobIngestionError as error:
+            status_code = 422 if error.code in {"invalid_url", "unsafe_url"} else 502
+            raise HTTPException(
+                status_code=status_code,
+                detail={"code": error.code, "message": str(error)},
+            ) from error
+
+    @app.get("/v1/jobs/{job_id}", response_model=JobPosting)
+    async def get_job(
+        job_id: UUID,
+        _auth: None = Depends(require_token),
+    ) -> JobPosting:
+        posting = await state.database.get_job_posting(job_id)
+        if posting is None:
+            raise HTTPException(status_code=404, detail="Job posting not found")
+        return posting
+
+    @app.post("/v1/materials/prepare", response_model=ApplicationMaterialPlan)
+    async def prepare_materials(
+        request: PrepareMaterialsRequest,
+        _auth: None = Depends(require_token),
+    ) -> ApplicationMaterialPlan:
+        job = await state.database.get_job_posting(request.job_id)
+        if job is None:
+            raise HTTPException(status_code=404, detail="Job posting not found")
+        try:
+            snapshot = await state.profile_vault.load()
+        except (KeychainUnavailableError, ProfileKeyUnavailableError) as error:
+            raise HTTPException(status_code=503, detail=str(error)) from error
+        if snapshot is None:
+            raise HTTPException(status_code=422, detail="Create a verified profile first")
+        if (
+            snapshot.profile.id != request.candidate_profile_id
+            or snapshot.profile.version != request.candidate_profile_version
+        ):
+            raise HTTPException(
+                status_code=409,
+                detail="The selected candidate profile version is no longer current",
+            )
+
+        with tracer.start_as_current_span("materials.prepare") as span:
+            result = prepare_application_materials(job, snapshot.profile)
+            span.set_attribute("materials.generator_version", result.generator_version)
+            span.set_attribute("materials.requirement_count", len(result.mappings))
+            span.set_attribute("materials.supported_count", result.supported_count)
+            span.set_attribute("materials.partial_count", result.partial_count)
+            span.set_attribute("materials.unsupported_count", result.unsupported_count)
+            span.set_attribute("materials.draft_entry_count", len(result.resume_draft.entries))
+            span.set_attribute("materials.model_used", result.model_used)
+            return result
+
     @app.post("/v1/runs", response_model=ApplicationRun, status_code=201)
     async def create_run(
         request: CreateRunRequest, _auth: None = Depends(require_token)
@@ -245,8 +540,8 @@ def create_app(
         run = await state.database.create_run(request)
         if request.start_immediately and state.browser_socket is not None:
             for next_state, reason in (
-                (WorkflowState.INGESTING_JOB, "job_url_received"),
-                (WorkflowState.PREPARING_MATERIALS, "foundation_materials_placeholder"),
+                (WorkflowState.INGESTING_JOB, "job_review_confirmed"),
+                (WorkflowState.PREPARING_MATERIALS, "normalized_job_attached"),
                 (WorkflowState.OPENING_APPLICATION, "browser_navigation_requested"),
             ):
                 await state.workflow.transition(
@@ -263,6 +558,79 @@ def create_app(
     @app.get("/v1/runs", response_model=list[ApplicationRun])
     async def list_runs(_auth: None = Depends(require_token)) -> list[ApplicationRun]:
         return await state.database.list_runs()
+
+    @app.post("/v1/demo/synthetic-run", response_model=ApplicationRun, status_code=201)
+    async def start_synthetic_run(
+        request: StartSyntheticDemoRequest,
+        _auth: None = Depends(require_token),
+    ) -> ApplicationRun:
+        if state.browser_socket is None:
+            raise HTTPException(status_code=503, detail="Browser worker is not connected")
+        try:
+            snapshot = await state.profile_vault.load()
+        except (KeychainUnavailableError, ProfileKeyUnavailableError) as error:
+            raise HTTPException(status_code=503, detail=str(error)) from error
+        if snapshot is None:
+            raise HTTPException(status_code=422, detail="Create a verified profile first")
+        if (
+            snapshot.profile.id != request.candidate_profile_id
+            or snapshot.profile.version != request.candidate_profile_version
+        ):
+            raise HTTPException(status_code=409, detail="The candidate profile version changed")
+
+        job = await state.database.save_job_posting(
+            JobPosting(
+                source_url=AnyHttpUrl(SYNTHETIC_FORM_URL),
+                canonical_url=AnyHttpUrl(SYNTHETIC_FORM_URL),
+                resolved_url=AnyHttpUrl(SYNTHETIC_FORM_URL),
+                title="Safe Autofill Lab",
+                company="CareerFlow Synthetic ATS",
+                description=SYNTHETIC_DESCRIPTION,
+                description_hash=hashlib.sha256(SYNTHETIC_DESCRIPTION.encode()).hexdigest(),
+                requirements=[
+                    JobRequirement(
+                        text="Test deterministic profile-field mapping without submission.",
+                        required=True,
+                        source_span=SourceSpan(
+                            section="synthetic-fixture",
+                            start=0,
+                            end=len(SYNTHETIC_DESCRIPTION),
+                        ),
+                    )
+                ],
+                platform=PlatformDetection(
+                    platform=Platform.SYNTHETIC,
+                    confidence=1,
+                    signals=["app-owned-fixture"],
+                ),
+                status=JobIngestionStatus.COMPLETE,
+            )
+        )
+        run = await state.database.create_run(
+            CreateRunRequest(
+                job_id=job.id,
+                candidate_profile_id=snapshot.profile.id,
+                candidate_profile_version=snapshot.profile.version,
+                job_url=AnyHttpUrl(SYNTHETIC_FORM_URL),
+                auto_submit_authorized=False,
+                start_immediately=False,
+            )
+        )
+        for next_state, reason in (
+            (WorkflowState.INGESTING_JOB, "synthetic_fixture_selected"),
+            (WorkflowState.PREPARING_MATERIALS, "synthetic_profile_attached"),
+            (WorkflowState.OPENING_APPLICATION, "synthetic_form_scan_requested"),
+        ):
+            await state.workflow.transition(
+                run_id=run.id,
+                to_state=next_state,
+                reason_code=reason,
+                idempotency_key=f"synthetic-{next_state}-{run.id}",
+            )
+        run.state = WorkflowState.OPENING_APPLICATION
+        await state.open_synthetic_form(run)
+        await state.publish({"type": "run_created", "run_id": str(run.id), "state": run.state})
+        return run
 
     @app.post("/v1/runs/{run_id}/transitions", response_model=WorkflowEvent)
     async def transition_run(
@@ -291,6 +659,65 @@ def create_app(
         run_id: UUID, _auth: None = Depends(require_token)
     ) -> list[WorkflowEvent]:
         return await state.database.list_events(run_id)
+
+    @app.get(
+        "/v1/runs/{run_id}/field-explanations",
+        response_model=list[FieldExplanation],
+    )
+    async def list_field_explanations(
+        run_id: UUID, _auth: None = Depends(require_token)
+    ) -> list[FieldExplanation]:
+        if await state.database.get_run(run_id) is None:
+            raise HTTPException(status_code=404, detail="Run not found")
+        return await state.database.list_field_explanations(run_id)
+
+    @app.put("/v1/runs/{run_id}/outcome", response_model=ApplicationOutcome)
+    async def record_application_outcome(
+        run_id: UUID,
+        request: RecordApplicationOutcomeRequest,
+        _auth: None = Depends(require_token),
+    ) -> ApplicationOutcome:
+        with tracking_tracer.start_as_current_span("application.outcome.record") as span:
+            span.set_attribute("careerflow.run_id", str(run_id))
+            span.set_attribute("careerflow.outcome", request.outcome)
+            span.set_attribute("careerflow.outcome_reason", request.reason_code)
+            outcome = await state.database.record_application_outcome(
+                run_id=run_id,
+                outcome=request.outcome,
+                reason_code=request.reason_code,
+            )
+            if outcome is None:
+                raise HTTPException(status_code=404, detail="Run not found")
+            OUTCOME_WRITE_REQUESTS.add(
+                1,
+                {
+                    "outcome": request.outcome,
+                    "reason_code": request.reason_code,
+                },
+            )
+            await state.publish(
+                {
+                    "type": "application_outcome_recorded",
+                    "run_id": str(run_id),
+                    "outcome": request.outcome,
+                }
+            )
+            return outcome
+
+    @app.get("/v1/runs/{run_id}/outcomes", response_model=list[ApplicationOutcome])
+    async def list_application_outcomes(
+        run_id: UUID,
+        _auth: None = Depends(require_token),
+    ) -> list[ApplicationOutcome]:
+        if await state.database.get_run(run_id) is None:
+            raise HTTPException(status_code=404, detail="Run not found")
+        return await state.database.list_application_outcomes(run_id)
+
+    @app.get("/v1/application-statistics", response_model=ApplicationStatistics)
+    async def application_statistics(
+        _auth: None = Depends(require_token),
+    ) -> ApplicationStatistics:
+        return await state.database.application_statistics()
 
     @app.get("/v1/events")
     async def events(request: Request, _auth: None = Depends(require_token)) -> StreamingResponse:
@@ -327,6 +754,39 @@ def create_app(
                 message = await websocket.receive_json()
                 if message.get("type") == "ready":
                     await state.publish({"type": "browser_worker_ready"})
+                elif message.get("type") == "form_observed":
+                    run_id = UUID(str(message["runId"]))
+                    await state.handle_observed_form(
+                        run_id=run_id,
+                        action_id=str(message["actionId"]),
+                        observed_form=ObservedForm.model_validate(message["observedForm"]),
+                    )
+                    await state.publish({"type": "browser_form_observed", "run_id": str(run_id)})
+                elif message.get("type") == "fill_result":
+                    run_id = UUID(str(message["runId"]))
+                    filled_mappings = [
+                        FieldMapping.model_validate(item)
+                        for item in message.get("filledMappings", [])
+                    ]
+                    blocked_mappings = [
+                        FieldMapping.model_validate(item)
+                        for item in message.get("blockedMappings", [])
+                    ]
+                    await state.handle_fill_result(
+                        run_id=run_id,
+                        action_id=str(message["actionId"]),
+                        ok=bool(message.get("ok")),
+                        page_state_hash=message.get("pageStateHash"),
+                        filled_mappings=filled_mappings,
+                        blocked_mappings=blocked_mappings,
+                    )
+                    await state.publish(
+                        {
+                            "type": "browser_fill_result",
+                            "run_id": str(run_id),
+                            "ok": bool(message.get("ok")),
+                        }
+                    )
                 elif message.get("type") == "action_result":
                     run_id = UUID(str(message["runId"]))
                     action_id = str(message["actionId"])

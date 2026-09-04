@@ -1,8 +1,8 @@
 # Feature: Evidence Mapping and Application Materials
 
-Status: résumé parsing and evidence-review foundation implemented  
+Status: deterministic evidence mapping and review-draft foundation implemented
 Owner: `services/agent`  
-Last updated: 2026-08-24
+Last updated: 2026-09-03
 
 ## Purpose
 
@@ -47,4 +47,8 @@ Use retrieval relevance metrics, citation coverage, contradiction checks, unsupp
 
 The OpenAI boundary uses the Responses API with `store=false`, medium reasoning, a user-selected model defaulting to `gpt-5.6-terra`, strict Pydantic outputs, token/latency telemetry, and no execution tools.
 
-Deterministic local parsing now creates a provenance-backed evidence ledger from selectable-text PDFs and DOCX paragraphs, headings, and table rows. Extracted statements are unverified by default and the desktop user can explicitly verify or return each item to review; every change creates a new encrypted profile version. Source files are encrypted locally and no résumé contents are sent to OpenAI. Image-only PDFs are recognized but await OCR. Requirement retrieval/ranking, unsupported-claim validation, grounded generation, user review of generated materials, and DOCX/PDF rendering remain pending.
+Deterministic local parsing creates a provenance-backed evidence ledger from selectable-text PDFs, allowlisted LinkedIn/GitHub PDF hyperlink annotations, and DOCX paragraphs, headings, and table rows. Annotation-derived links retain their page and a `hyperlink` section marker. The same parser supports a non-persistent résumé-first preview that suggests common profile fields with source spans and no model call or token use. Extracted statements are unverified by default and the desktop user can explicitly verify or return each item to review; every change creates a new encrypted profile version. Source files are encrypted locally after profile creation and no résumé contents are sent to OpenAI. Image-only PDFs are recognized but await OCR.
+
+The authenticated material-preparation endpoint now validates the exact current profile ID/version and job ID/version, excludes unverified evidence, excludes manual facts outside ordinary education, filters contact-like statements, and deterministically ranks remaining evidence using normalized requirement-term coverage. Each requirement reports `supported`, `partial`, or `unsupported`, a bounded confidence score, matched terms, exact evidence IDs, and source spans. The draft contains only verbatim verified statements selected from non-unsupported mappings, so the deterministic baseline cannot introduce a new claim. OpenTelemetry records only structural counts and generator metadata.
+
+The material plan is recomputable and remains in renderer memory rather than duplicating private statements into plaintext SQLite. It is always `needs_review`, or `needs_evidence` when no eligible verified evidence exists; changing the profile invalidates it. Model-assisted rewriting, deterministic unsupported-claim validation for rewritten prose, user draft edits, encrypted durable material versions, requirement-retrieval evaluation, and DOCX/PDF rendering remain pending.

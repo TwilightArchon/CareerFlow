@@ -1,6 +1,6 @@
 {
   "name": "@careerflow/contracts",
-  "version": "0.1.5",
+  "version": "0.1.9",
   "private": true,
   "type": "module",
   "exports": {

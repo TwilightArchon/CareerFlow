@@ -1,8 +1,8 @@
 # Feature: Visible Browser Automation
 
-Status: foundation implemented  
+Status: controlled synthetic scan/fill implemented
 Owner: `packages/browser-worker`  
-Last updated: 2026-08-23
+Last updated: 2026-09-03
 
 ## Purpose
 
@@ -45,4 +45,8 @@ Use local multi-page fixtures for navigation, upload, validation, popup, session
 
 ## Current implementation
 
-The supervised worker authenticates to the local WebSocket, propagates W3C trace context, maintains heartbeats, lazily launches a visible Playwright-controlled Google Chrome profile, navigates on typed commands, rejects obvious or DNS-resolved private-network destinations, and reports a page-state fingerprint. Form inspection, filling, uploads, pause/cancel, restart recovery, and confirmation capture remain pending.
+The supervised worker authenticates to the local WebSocket, propagates W3C trace context, maintains heartbeats, lazily launches a visible Playwright-controlled Google Chrome profile, navigates on typed commands, rejects obvious or DNS-resolved private-network destinations, and reports a page-state fingerprint that includes hashed form state.
+
+The app-owned Safe Autofill Lab is fulfilled entirely inside the browser worker at a reserved `.invalid` URL, contains no network dependencies or submit action, and exposes 12 conventional identity, contact, link, education, and legal controls. The worker scans labels, types, required state, autocomplete metadata, options, and deterministic sensitivity. Python remaps canonical sensitivity independently, applies policy, and returns only approved values. Before filling, the worker compares the current page-state hash with the scan hash; changed pages fail closed. Approved controls are filled idempotently and visually highlighted. Contact and legal controls remain blank and move the durable run to `awaiting_human`.
+
+The normal suite verifies fixture isolation, sensitivity classification, contracts, mapping, policy, and workflow history. `pnpm browser:test:integration` opens real visible Google Chrome and verifies scan, fill, state change, and stale-plan rejection. Real ATS inspection/filling, uploads, pause/cancel, restart recovery, and confirmation capture remain pending.

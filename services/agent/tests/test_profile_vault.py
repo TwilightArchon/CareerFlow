@@ -7,11 +7,12 @@ import pytest
 from conftest import MemorySecretStore
 from docx import Document as DocxDocument
 from pypdf import PdfWriter
-from pypdf.generic import DecodedStreamObject, DictionaryObject, NameObject
+from pypdf.generic import DecodedStreamObject, DictionaryObject, NameObject, RectangleObject
 
 from careerflow_agent.config import Settings
 from careerflow_agent.contracts import CandidateProfileInput
 from careerflow_agent.database import Database
+from careerflow_agent.document_parser import extract_profile_suggestions, parse_resume
 from careerflow_agent.profile_vault import (
     PROFILE_KEY_REFERENCE,
     ProfileKeyUnavailableError,
@@ -61,6 +62,34 @@ def selectable_text_pdf() -> bytes:
     content = DecodedStreamObject()
     content.set_data(b"BT /F1 12 Tf 72 720 Td (Built a local supervised agent.) Tj ET")
     page[NameObject("/Contents")] = writer._add_object(content)  # noqa: SLF001
+    buffer = BytesIO()
+    writer.write(buffer)
+    return buffer.getvalue()
+
+
+def linked_profile_pdf() -> bytes:
+    writer = PdfWriter()
+    writer.add_blank_page(width=612, height=792)
+    writer.add_uri(
+        page_number=0,
+        uri="https://www.linkedin.com/in/synthetic-candidate?tracking=fixture",
+        rect=RectangleObject((72, 700, 160, 720)),
+    )
+    writer.add_uri(
+        page_number=0,
+        uri="http://github.com/synthetic-candidate#profile",
+        rect=RectangleObject((170, 700, 250, 720)),
+    )
+    writer.add_uri(
+        page_number=0,
+        uri="https://github.com/synthetic-candidate/example-project",
+        rect=RectangleObject((260, 700, 350, 720)),
+    )
+    writer.add_uri(
+        page_number=0,
+        uri="javascript:alert('fixture')",
+        rect=RectangleObject((360, 700, 430, 720)),
+    )
     buffer = BytesIO()
     writer.write(buffer)
     return buffer.getvalue()
@@ -255,3 +284,22 @@ async def test_selectable_pdf_creates_page_provenance(tmp_path: Path) -> None:
         assert evidence.source_span.section == "page:1"
     finally:
         await database.close()
+
+
+def test_pdf_hyperlink_annotations_extract_profile_links_with_provenance() -> None:
+    statements = parse_resume(linked_profile_pdf(), "application/pdf")
+    suggestions = {
+        suggestion.canonical_path: suggestion
+        for suggestion in extract_profile_suggestions(statements)
+    }
+
+    assert suggestions["links.linkedin"].value == (
+        "https://www.linkedin.com/in/synthetic-candidate"
+    )
+    assert suggestions["links.github"].value == "https://github.com/synthetic-candidate"
+    assert suggestions["links.linkedin"].source_span.page == 1
+    assert suggestions["links.github"].source_span.page == 1
+    assert suggestions["links.linkedin"].source_span.section == "page:1 · hyperlink"
+    assert suggestions["links.github"].source_span.section == "page:1 · hyperlink"
+    assert all("example-project" not in statement.statement for statement in statements)
+    assert all("javascript:" not in statement.statement for statement in statements)

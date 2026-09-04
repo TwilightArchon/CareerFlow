@@ -20,11 +20,11 @@ Exit criterion: the architecture, trust boundaries, schemas, and build conventio
 - [x] Scaffold the Python FastAPI workflow and AI service.
 - [x] Add local development startup, lint, type-check, test, and packaging commands. (Desktop launch, authenticated process handshake, production build, embedded Python runtime, unsigned DMG build, disk-image verification, compiled workspace-runtime and sandboxed preload verification, and isolated installed-app launch regression coverage completed on Apple Silicon.)
 - [x] Implement encrypted local profile storage backed by the operating-system keychain. (Immutable profile versions, verified manual-entry facts, AES-256-GCM ciphertext, Keychain key reference, authenticated APIs, stale-write protection, and fail-closed key handling implemented and tested.)
-- [x] Import a resume and create the candidate evidence ledger with provenance. (Selectable-text PDF and DOCX parsing, encrypted original artifacts, page/section spans, duplicate detection, image-only PDF status, immutable profile integration, and explicit evidence verification are implemented and tested.)
-- [ ] Accept a public job URL and extract normalized job requirements.
-- [ ] Map requirements to candidate evidence and generate a grounded resume draft.
-- [ ] Launch a visible persistent browser and fill a controlled local test form. (Dedicated visible-browser navigation implemented; controlled form scan/fill pending.)
-- [ ] Save the run, field-level explanations, and outcome to the dashboard. (Durable run restoration and the initial Applications history view are implemented; extracted job metadata, field explanations, outcomes, and statistics remain.)
+- [x] Import a resume and create the candidate evidence ledger with provenance. (Résumé-first token-free profile suggestions, selectable-text PDF and DOCX parsing, allowlisted PDF-embedded LinkedIn/GitHub profile links, encrypted original artifacts, page/section spans, duplicate detection, image-only PDF status, immutable profile integration, and explicit evidence verification are implemented and tested.)
+- [x] Accept a public job URL and extract normalized job requirements. (Guarded HTTP retrieval, JSON-LD/Open Graph extraction, Workday/Greenhouse/Lever detection, source-spanned requirements, versioned SQLite records, explicit desktop review, and the supplied public Workday posting are verified; dynamic browser fallback and field correction remain follow-up work.)
+- [x] Map requirements to candidate evidence and generate a grounded resume draft. (A version-checked deterministic plan ranks only verified, non-sensitive evidence; reports supported, partial, and unsupported requirements; and builds a review-only verbatim evidence draft with source IDs/spans. AI rewriting, user draft edits, encrypted durable material versions, and DOCX/PDF rendering remain follow-up work.)
+- [x] Launch a visible persistent browser and fill a controlled local test form. (The app-owned Safe Autofill Lab scans 12 conventional controls, deterministically maps verified facts, fills only policy-approved ordinary fields, rejects stale page state, records safe counts, and pauses without any submit action. Verified in visible Google Chrome.)
+- [x] Save the run, field-level explanations, and outcome to the dashboard. (Durable run restoration, normalized job title/company/platform, field-level mapping/policy explanations, append-only user-confirmed outcomes, and aggregate statistics are implemented and tested.)
 
 Exit criterion: one local test job flows from pasted URL to prepared application and recorded outcome without unsupported claims.
 
@@ -35,7 +35,7 @@ Exit criterion: one local test job flows from pasted URL to prepared application
 - [ ] Add the human-intervention inbox with clear reasons and resume controls.
 - [ ] Add document upload, validation-error handling, multi-page navigation, and review-page verification.
 - [ ] Add user-authorized auto-submit mode with policy gates and confirmation capture.
-- [ ] Add application history, success/failure taxonomy, filters, and statistics. (Durable URL/state/activity/authorization history is implemented; outcomes, failure taxonomy, filters, and statistics remain.)
+- [x] Add application history, success/failure taxonomy, filters, and statistics. (The local dashboard restores runs, records idempotent append-only outcome revisions with stable reason codes, filters by outcome/platform, and reconciles aggregate statistics against the latest durable outcome per run.)
 - [ ] Add trace correlation across UI, browser, workflow, and model calls. (W3C propagation and process instrumentation implemented; end-to-end trace verification pending.)
 
 Exit criterion: interrupted runs recover safely, sensitive actions pause correctly, and every automated action is explainable.

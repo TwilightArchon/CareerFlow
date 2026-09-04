@@ -2,6 +2,62 @@
 
 All notable CareerFlow changes are documented here.
 
+## 0.1.9 — 2026-09-03
+
+### Added
+
+- Added append-only, user-confirmed application outcomes with constrained submitted, failed, cancelled, abandoned, and uncertain states.
+- Added stable outcome reason codes, idempotent repeat handling, revision linkage, and non-PII confirmation fingerprints for user-confirmed submissions.
+- Added durable outcome audit retrieval, latest-outcome run projections, outcome/platform dashboard filters, and aggregate tracked/pending/submitted/resolution statistics.
+- Added OpenTelemetry outcome-write spans and bounded outcome/reason metrics.
+
+### Security
+
+- Outcome corrections accept no free-form answer content, and submitted status requires an explicit user confirmation flag.
+
+## 0.1.8 — 2026-09-03
+
+### Added
+
+- Added an app-owned Safe Autofill Lab that opens in the visible persistent browser, scans 12 conventional controls, and fills policy-approved verified profile facts without contacting an employer.
+- Added deterministic label/autocomplete mapping, canonical sensitivity enforcement, typed scan/fill messages, evidence-linked fill plans, and redacted workflow counts.
+- Added durable field-level decision records and an Applications detail view showing canonical mapping, confidence policy outcome, and rationale without exposing candidate values.
+- Added redacted OpenTelemetry browser-action counts, latency, and scan/fill cardinalities.
+- Added an opt-in real-Chrome integration test for visible form opening, scanning, filling, and stale-page rejection.
+
+### Security
+
+- Contact and legal fields remain blank for human review, the lab has no submit action, and a page-state check rejects a fill plan if the form changes after inspection.
+
+## 0.1.7 — 2026-09-03
+
+### Added
+
+- Added deterministic requirement-to-evidence mapping with supported, partial, and unsupported classifications, confidence, matched terms, and exact evidence provenance.
+- Added a review-only grounded résumé draft that selects verbatim verified evidence without an OpenAI call or token use.
+- Added an authenticated, profile-version-checked material-preparation API and desktop review UI with coverage and gap summaries.
+
+### Changed
+
+- Opening the visible application browser now requires preparing a current grounded material plan; profiles without verified relevant evidence receive an actionable verification prompt.
+
+## 0.1.6 — 2026-09-02
+
+### Added
+
+- Added résumé-first onboarding with local deterministic suggestions for common identity, contact, link, and education fields.
+- Added token-free extraction of LinkedIn and GitHub profile destinations stored in PDF hyperlink annotations, with page provenance and strict URL allowlisting.
+- Added an authenticated, non-persistent preview API and source-span/confidence contracts without OpenAI calls or token use.
+- Added regression coverage proving preview works before profile creation and does not persist a profile.
+- Added guarded public job retrieval, JSON-LD/Open Graph normalization, deterministic requirement extraction, ATS hostname detection, versioned SQLite job records, and a desktop job-review card.
+- Added normalized job title, company, and platform to durable application history rows.
+
+### Changed
+
+- The résumé picker is available before profile creation, fills only empty form fields, and imports the encrypted source document after the user reviews and saves the profile.
+- Existing profiles can rerun token-free résumé suggestions without re-importing a duplicate document; extracted values still fill only empty fields and require a separate save.
+- Pasting a job URL now reviews and persists extracted details before an application run is created or the visible browser opens.
+
 ## 0.1.5 — 2026-08-24
 
 ### Added

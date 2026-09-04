@@ -43,4 +43,8 @@ Test trace completeness, redaction, sampling, dropped-event behavior, metric rec
 
 Electron, FastAPI, and the browser worker initialize OpenTelemetry SDKs and propagate W3C context. Workflow, policy, browser, and OpenAI boundaries define initial spans and metrics. Development OTLP configuration feeds a local collector and Jaeger. Python also writes bounded redacted local span diagnostics, with a test proving secret redaction. Full cross-process trace assertions, metric reconciliation, model-cost calculation, replay UI, and evaluation datasets remain pending.
 
+The controlled form slice records `browser.action` spans, `browser_actions_total`, `browser_action_duration_ms`, and non-PII control/filled/blocked counts. Run IDs and command/action classes correlate scan and fill work; values and DOM text are excluded.
+
+User-confirmed outcome writes record `application.outcome.record` spans and `application_outcome_write_requests_total` with bounded outcome/reason labels. User-facing totals are independently reconciled from append-only SQLite outcome revisions, so telemetry loss or sampling cannot alter the dashboard.
+
 The GitHub Actions verification job installs the pinned pnpm release before enabling setup-node's pnpm cache, uses Node-24-backed action releases, prints the resolved toolchain versions, installs both lockfiles in frozen mode, regenerates and checks deterministically formatted contracts, and runs formatting, typing, tests, and production builds. A repository check validates the setup ordering and required pins before changes reach CI. Evaluation-threshold release gates remain pending.

@@ -2,7 +2,7 @@
 
 Status: encrypted profile and résumé-evidence foundation implemented  
 Owner: `services/agent` and `apps/desktop`  
-Last updated: 2026-08-24
+Last updated: 2026-09-03
 
 ## Purpose
 
@@ -10,7 +10,7 @@ Maintain the verified personal data, source documents, reusable answers, prefere
 
 ## User flow
 
-The user imports a resume or enters information, reviews extracted records, corrects errors, and approves reusable answers. Every claim links to a source or explicit user statement. The user can edit, export, or delete the profile.
+The user may begin by importing a résumé or entering information manually. A résumé preview suggests supported profile fields locally, fills only empty form values, and requires the user to review the result before saving the encrypted profile. The same preview remains available for an existing profile without requiring a duplicate evidence import. The user then reviews extracted evidence, corrects errors, and approves reusable answers. Every claim links to a source or explicit user statement. The user can edit, export, or delete the profile.
 
 ## Responsibilities
 
@@ -49,6 +49,8 @@ Canonical profile, fact, evidence, source-document, and source-span schemas exis
 
 One stable profile ID has immutable versions. Canonical profile JSON is encrypted with AES-256-GCM and version-bound associated data before SQLite storage; the database contains ciphertext, a non-secret Keychain reference, and timestamps. The 256-bit key exists only in macOS Keychain. Reads and writes fail closed when the key is missing or invalid, and optimistic version checks prevent stale edits. Authenticated typed local APIs and the narrow Electron preload expose only load and save operations. New application runs reference the current real profile ID and version.
 
-Selectable-text PDF and DOCX résumés can now be imported from the sandboxed desktop UI. The original bytes are encrypted with AES-256-GCM into local artifact storage, while the immutable profile version records only metadata and the encrypted artifact reference. Deterministic extraction creates one reviewable evidence item per PDF line, DOCX paragraph, heading, or table row. Each item records its source-document ID, normalized character offsets, page or section, extraction method, confidence, and verification state. Imported evidence never overwrites manually verified facts; verification creates another immutable profile version. Duplicate content is rejected by SHA-256, unsafe filenames are reduced to their basename, uploads are capped at 10 MB, parser work is bounded, and image-only PDFs are retained as `needs_ocr`.
+Selectable-text PDF and DOCX résumés can now be selected before a profile exists. An authenticated, non-persistent preview extracts conservative suggestions for name, email, phone, LinkedIn, GitHub, school, degree, field of study, and graduation year using regular expressions and document structure. For PDFs, it also reads external-link annotations when the printed label hides the URL. Only HTTP(S) LinkedIn `/in/…` destinations and single-segment GitHub profile destinations are accepted; repository links, unrelated hosts, credentials, non-standard ports, queries, fragments, and non-HTTP(S) schemes are excluded. It makes no OpenAI request, consumes no model tokens, never infers legal answers, and does not overwrite form fields the user already entered. Every suggestion includes confidence and a source span, remains a proposal, and becomes verified only when the user reviews and saves the form.
 
-Tests cover encryption round trips, plaintext absence from SQLite and encrypted artifacts, packaged Keychain restart restoration, version preservation, stale writes, missing keys, PDF/DOCX provenance, tables, duplicate imports, image-only PDFs, evidence verification, recursive redaction, API round trips, and contract validation. Multiple education/employment entries, OCR, export, deletion, richer re-import reconciliation, credential management, and key rotation remain pending.
+When the profile is created, the selected original bytes are encrypted with AES-256-GCM into local artifact storage, while the immutable profile version records only metadata and the encrypted artifact reference. Deterministic extraction creates one reviewable evidence item per PDF line, DOCX paragraph, heading, or table row. Each item records its source-document ID, normalized character offsets, page or section, extraction method, confidence, and verification state. Imported evidence never overwrites manually verified facts; verification creates another immutable profile version. Duplicate content is rejected by SHA-256, unsafe filenames are reduced to their basename, uploads are capped at 10 MB, parser work is bounded, and image-only PDFs are retained as `needs_ocr`.
+
+Tests cover encryption round trips, plaintext absence from SQLite and encrypted artifacts, packaged Keychain restart restoration, version preservation, stale writes, missing keys, PDF/DOCX provenance, PDF hyperlink annotations and unsafe-destination rejection, résumé-first preview without profile creation, deterministic field suggestions, tables, duplicate imports, image-only PDFs, evidence verification, recursive redaction, API round trips, and contract validation. Multiple education/employment entries, OCR, export, deletion, richer re-import reconciliation, credential management, and key rotation remain pending.

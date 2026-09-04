@@ -1,6 +1,155 @@
 {
   "components": {
     "schemas": {
+      "ApplicationMaterialPlan": {
+        "additionalProperties": false,
+        "properties": {
+          "candidateProfileId": {
+            "format": "uuid",
+            "title": "Candidateprofileid",
+            "type": "string"
+          },
+          "candidateProfileVersion": {
+            "minimum": 1.0,
+            "title": "Candidateprofileversion",
+            "type": "integer"
+          },
+          "coverageRatio": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Coverageratio",
+            "type": "number"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "title": "Createdat",
+            "type": "string"
+          },
+          "generatorVersion": {
+            "const": "deterministic-v1",
+            "default": "deterministic-v1",
+            "title": "Generatorversion",
+            "type": "string"
+          },
+          "jobId": {
+            "format": "uuid",
+            "title": "Jobid",
+            "type": "string"
+          },
+          "jobVersion": {
+            "minimum": 1.0,
+            "title": "Jobversion",
+            "type": "integer"
+          },
+          "mappings": {
+            "items": {
+              "$ref": "#/components/schemas/RequirementEvidenceMapping"
+            },
+            "title": "Mappings",
+            "type": "array"
+          },
+          "modelUsed": {
+            "const": false,
+            "default": false,
+            "title": "Modelused",
+            "type": "boolean"
+          },
+          "partialCount": {
+            "minimum": 0.0,
+            "title": "Partialcount",
+            "type": "integer"
+          },
+          "resumeDraft": {
+            "$ref": "#/components/schemas/GroundedResumeDraft"
+          },
+          "status": {
+            "$ref": "#/components/schemas/MaterialPlanStatus"
+          },
+          "supportedCount": {
+            "minimum": 0.0,
+            "title": "Supportedcount",
+            "type": "integer"
+          },
+          "unsupportedCount": {
+            "minimum": 0.0,
+            "title": "Unsupportedcount",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "jobId",
+          "jobVersion",
+          "candidateProfileId",
+          "candidateProfileVersion",
+          "status",
+          "coverageRatio",
+          "supportedCount",
+          "partialCount",
+          "unsupportedCount",
+          "resumeDraft"
+        ],
+        "title": "ApplicationMaterialPlan",
+        "type": "object"
+      },
+      "ApplicationOutcome": {
+        "additionalProperties": false,
+        "properties": {
+          "confirmation": {
+            "items": {
+              "$ref": "#/components/schemas/ConfirmationEvidence"
+            },
+            "title": "Confirmation",
+            "type": "array"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "outcome": {
+            "$ref": "#/components/schemas/OutcomeType"
+          },
+          "reasonCode": {
+            "$ref": "#/components/schemas/OutcomeReasonCode"
+          },
+          "recordedAt": {
+            "format": "date-time",
+            "title": "Recordedat",
+            "type": "string"
+          },
+          "recordedBy": {
+            "const": "user",
+            "default": "user",
+            "title": "Recordedby",
+            "type": "string"
+          },
+          "revision": {
+            "minimum": 1.0,
+            "title": "Revision",
+            "type": "integer"
+          },
+          "runId": {
+            "format": "uuid",
+            "title": "Runid",
+            "type": "string"
+          },
+          "supersedesId": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supersedesid"
+          }
+        },
+        "required": ["runId", "revision", "outcome", "reasonCode"],
+        "title": "ApplicationOutcome",
+        "type": "object"
+      },
       "ApplicationRun": {
         "additionalProperties": false,
         "properties": {
@@ -19,6 +168,17 @@
             "title": "Candidateprofileversion",
             "type": "integer"
           },
+          "company": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Company"
+          },
           "createdAt": {
             "format": "date-time",
             "title": "Createdat",
@@ -34,11 +194,42 @@
             "title": "Jobid",
             "type": "string"
           },
+          "jobTitle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Jobtitle"
+          },
           "jobUrl": {
             "format": "uri",
             "minLength": 1,
             "title": "Joburl",
             "type": "string"
+          },
+          "latestOutcome": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ApplicationOutcome"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "platform": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Platform"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "state": {
             "$ref": "#/components/schemas/WorkflowState",
@@ -52,6 +243,82 @@
         },
         "required": ["jobId", "candidateProfileId", "candidateProfileVersion", "jobUrl"],
         "title": "ApplicationRun",
+        "type": "object"
+      },
+      "ApplicationStatistics": {
+        "additionalProperties": false,
+        "properties": {
+          "abandoned": {
+            "minimum": 0.0,
+            "title": "Abandoned",
+            "type": "integer"
+          },
+          "cancelled": {
+            "minimum": 0.0,
+            "title": "Cancelled",
+            "type": "integer"
+          },
+          "failed": {
+            "minimum": 0.0,
+            "title": "Failed",
+            "type": "integer"
+          },
+          "generatedAt": {
+            "format": "date-time",
+            "title": "Generatedat",
+            "type": "string"
+          },
+          "outcomeUncertain": {
+            "minimum": 0.0,
+            "title": "Outcomeuncertain",
+            "type": "integer"
+          },
+          "pendingRuns": {
+            "minimum": 0.0,
+            "title": "Pendingruns",
+            "type": "integer"
+          },
+          "resolutionRate": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Resolutionrate",
+            "type": "number"
+          },
+          "resolvedRuns": {
+            "minimum": 0.0,
+            "title": "Resolvedruns",
+            "type": "integer"
+          },
+          "submitted": {
+            "minimum": 0.0,
+            "title": "Submitted",
+            "type": "integer"
+          },
+          "submittedRate": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Submittedrate",
+            "type": "number"
+          },
+          "totalRuns": {
+            "minimum": 0.0,
+            "title": "Totalruns",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "totalRuns",
+          "resolvedRuns",
+          "pendingRuns",
+          "submitted",
+          "failed",
+          "cancelled",
+          "abandoned",
+          "outcomeUncertain",
+          "resolutionRate",
+          "submittedRate"
+        ],
+        "title": "ApplicationStatistics",
         "type": "object"
       },
       "Body_import_resume_v1_profile_resume_post": {
@@ -69,6 +336,18 @@
         },
         "required": ["file", "expected_version"],
         "title": "Body_import_resume_v1_profile_resume_post",
+        "type": "object"
+      },
+      "Body_preview_resume_v1_profile_resume_preview_post": {
+        "properties": {
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "type": "string"
+          }
+        },
+        "required": ["file"],
+        "title": "Body_preview_resume_v1_profile_resume_preview_post",
         "type": "object"
       },
       "CandidateFact": {
@@ -298,6 +577,45 @@
         "title": "CandidateProfileSnapshot",
         "type": "object"
       },
+      "ConfirmationEvidence": {
+        "additionalProperties": false,
+        "properties": {
+          "artifactRef": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Artifactref"
+          },
+          "capturedAt": {
+            "format": "date-time",
+            "title": "Capturedat",
+            "type": "string"
+          },
+          "fingerprint": {
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "Fingerprint",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "confirmation_page",
+              "application_id",
+              "confirmation_email",
+              "user_correction"
+            ],
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": ["kind", "fingerprint"],
+        "title": "ConfirmationEvidence",
+        "type": "object"
+      },
       "CreateRunRequest": {
         "additionalProperties": false,
         "properties": {
@@ -397,10 +715,219 @@
         "title": "EvidenceItem",
         "type": "object"
       },
+      "EvidenceMatch": {
+        "additionalProperties": false,
+        "properties": {
+          "evidenceId": {
+            "format": "uuid",
+            "title": "Evidenceid",
+            "type": "string"
+          },
+          "matchedTerms": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Matchedterms",
+            "type": "array"
+          },
+          "score": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Score",
+            "type": "number"
+          },
+          "sourceDocumentId": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sourcedocumentid"
+          },
+          "sourceSpan": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SourceSpan"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "statement": {
+            "title": "Statement",
+            "type": "string"
+          }
+        },
+        "required": ["evidenceId", "statement", "score"],
+        "title": "EvidenceMatch",
+        "type": "object"
+      },
       "FactState": {
         "enum": ["extracted", "needs_review", "verified", "superseded", "deleted"],
         "title": "FactState",
         "type": "string"
+      },
+      "FieldExplanation": {
+        "additionalProperties": false,
+        "properties": {
+          "canonicalPath": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Canonicalpath"
+          },
+          "confidence": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Confidence",
+            "type": "number"
+          },
+          "controlId": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Controlid",
+            "type": "string"
+          },
+          "decision": {
+            "$ref": "#/components/schemas/MappingDecision"
+          },
+          "filled": {
+            "title": "Filled",
+            "type": "boolean"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "pageStateHash": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Pagestatehash",
+            "type": "string"
+          },
+          "rationale": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Rationale",
+            "type": "string"
+          },
+          "recordedAt": {
+            "format": "date-time",
+            "title": "Recordedat",
+            "type": "string"
+          },
+          "runId": {
+            "format": "uuid",
+            "title": "Runid",
+            "type": "string"
+          },
+          "sensitivity": {
+            "$ref": "#/components/schemas/Sensitivity"
+          },
+          "source": {
+            "enum": ["adapter", "deterministic", "model", "user"],
+            "title": "Source",
+            "type": "string"
+          },
+          "stepId": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Stepid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "runId",
+          "stepId",
+          "pageStateHash",
+          "controlId",
+          "source",
+          "confidence",
+          "sensitivity",
+          "decision",
+          "rationale",
+          "filled"
+        ],
+        "title": "FieldExplanation",
+        "type": "object"
+      },
+      "GroundedResumeDraft": {
+        "additionalProperties": false,
+        "properties": {
+          "entries": {
+            "items": {
+              "$ref": "#/components/schemas/GroundedResumeEntry"
+            },
+            "title": "Entries",
+            "type": "array"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": ["title"],
+        "title": "GroundedResumeDraft",
+        "type": "object"
+      },
+      "GroundedResumeEntry": {
+        "additionalProperties": false,
+        "properties": {
+          "evidenceId": {
+            "format": "uuid",
+            "title": "Evidenceid",
+            "type": "string"
+          },
+          "sourceDocumentId": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sourcedocumentid"
+          },
+          "sourceSpan": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SourceSpan"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "statement": {
+            "title": "Statement",
+            "type": "string"
+          },
+          "supportsRequirementIds": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Supportsrequirementids",
+            "type": "array"
+          }
+        },
+        "required": ["evidenceId", "statement"],
+        "title": "GroundedResumeEntry",
+        "type": "object"
       },
       "HTTPValidationError": {
         "properties": {
@@ -455,6 +982,338 @@
         "title": "HealthStatus",
         "type": "object"
       },
+      "IngestJobRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "url": {
+            "format": "uri",
+            "minLength": 1,
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": ["url"],
+        "title": "IngestJobRequest",
+        "type": "object"
+      },
+      "JobIngestionStatus": {
+        "enum": ["complete", "needs_review"],
+        "title": "JobIngestionStatus",
+        "type": "string"
+      },
+      "JobPosting": {
+        "additionalProperties": false,
+        "properties": {
+          "canonicalUrl": {
+            "format": "uri",
+            "minLength": 1,
+            "title": "Canonicalurl",
+            "type": "string"
+          },
+          "company": {
+            "title": "Company",
+            "type": "string"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "descriptionHash": {
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "Descriptionhash",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "location": {
+            "default": "",
+            "title": "Location",
+            "type": "string"
+          },
+          "platform": {
+            "$ref": "#/components/schemas/PlatformDetection"
+          },
+          "requirements": {
+            "items": {
+              "$ref": "#/components/schemas/JobRequirement"
+            },
+            "title": "Requirements",
+            "type": "array"
+          },
+          "resolvedUrl": {
+            "format": "uri",
+            "minLength": 1,
+            "title": "Resolvedurl",
+            "type": "string"
+          },
+          "retrievedAt": {
+            "format": "date-time",
+            "title": "Retrievedat",
+            "type": "string"
+          },
+          "sourceUrl": {
+            "format": "uri",
+            "minLength": 1,
+            "title": "Sourceurl",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/JobIngestionStatus"
+          },
+          "supersedesId": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supersedesid"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "version": {
+            "default": 1,
+            "minimum": 1.0,
+            "title": "Version",
+            "type": "integer"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "sourceUrl",
+          "canonicalUrl",
+          "resolvedUrl",
+          "title",
+          "company",
+          "description",
+          "descriptionHash",
+          "platform",
+          "status"
+        ],
+        "title": "JobPosting",
+        "type": "object"
+      },
+      "JobRequirement": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "required": {
+            "title": "Required",
+            "type": "boolean"
+          },
+          "sourceSpan": {
+            "$ref": "#/components/schemas/SourceSpan"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": ["text", "required", "sourceSpan"],
+        "title": "JobRequirement",
+        "type": "object"
+      },
+      "MappingDecision": {
+        "enum": ["auto_fill", "review", "human_required", "unsupported"],
+        "title": "MappingDecision",
+        "type": "string"
+      },
+      "MaterialPlanStatus": {
+        "enum": ["needs_review", "needs_evidence"],
+        "title": "MaterialPlanStatus",
+        "type": "string"
+      },
+      "OutcomeReasonCode": {
+        "enum": [
+          "user_confirmed_submitted",
+          "ingestion_failed",
+          "evidence_missing",
+          "authentication_failed",
+          "registration_failed",
+          "verification_failed",
+          "mapping_failed",
+          "validation_failed",
+          "submission_failed",
+          "platform_changed",
+          "policy_blocked",
+          "user_cancelled",
+          "user_abandoned",
+          "confirmation_missing"
+        ],
+        "title": "OutcomeReasonCode",
+        "type": "string"
+      },
+      "OutcomeType": {
+        "enum": ["submitted", "failed", "cancelled", "abandoned", "outcome_uncertain"],
+        "title": "OutcomeType",
+        "type": "string"
+      },
+      "Platform": {
+        "enum": ["synthetic", "workday", "greenhouse", "lever", "unknown"],
+        "title": "Platform",
+        "type": "string"
+      },
+      "PlatformDetection": {
+        "additionalProperties": false,
+        "properties": {
+          "confidence": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Confidence",
+            "type": "number"
+          },
+          "platform": {
+            "$ref": "#/components/schemas/Platform"
+          },
+          "signals": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Signals",
+            "type": "array"
+          }
+        },
+        "required": ["platform", "confidence"],
+        "title": "PlatformDetection",
+        "type": "object"
+      },
+      "PrepareMaterialsRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "candidateProfileId": {
+            "format": "uuid",
+            "title": "Candidateprofileid",
+            "type": "string"
+          },
+          "candidateProfileVersion": {
+            "minimum": 1.0,
+            "title": "Candidateprofileversion",
+            "type": "integer"
+          },
+          "jobId": {
+            "format": "uuid",
+            "title": "Jobid",
+            "type": "string"
+          }
+        },
+        "required": ["jobId", "candidateProfileId", "candidateProfileVersion"],
+        "title": "PrepareMaterialsRequest",
+        "type": "object"
+      },
+      "RecordApplicationOutcomeRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "confirmedByUser": {
+            "const": true,
+            "title": "Confirmedbyuser",
+            "type": "boolean"
+          },
+          "outcome": {
+            "$ref": "#/components/schemas/OutcomeType"
+          },
+          "reasonCode": {
+            "$ref": "#/components/schemas/OutcomeReasonCode"
+          }
+        },
+        "required": ["outcome", "reasonCode", "confirmedByUser"],
+        "title": "RecordApplicationOutcomeRequest",
+        "type": "object"
+      },
+      "RequirementEvidenceMapping": {
+        "additionalProperties": false,
+        "properties": {
+          "confidence": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Confidence",
+            "type": "number"
+          },
+          "explanation": {
+            "title": "Explanation",
+            "type": "string"
+          },
+          "matches": {
+            "items": {
+              "$ref": "#/components/schemas/EvidenceMatch"
+            },
+            "title": "Matches",
+            "type": "array"
+          },
+          "required": {
+            "title": "Required",
+            "type": "boolean"
+          },
+          "requirementId": {
+            "format": "uuid",
+            "title": "Requirementid",
+            "type": "string"
+          },
+          "requirementText": {
+            "title": "Requirementtext",
+            "type": "string"
+          },
+          "support": {
+            "$ref": "#/components/schemas/RequirementSupport"
+          }
+        },
+        "required": [
+          "requirementId",
+          "requirementText",
+          "required",
+          "support",
+          "confidence",
+          "explanation"
+        ],
+        "title": "RequirementEvidenceMapping",
+        "type": "object"
+      },
+      "RequirementSupport": {
+        "enum": ["supported", "partial", "unsupported"],
+        "title": "RequirementSupport",
+        "type": "string"
+      },
+      "ResumeFieldSuggestion": {
+        "additionalProperties": false,
+        "properties": {
+          "canonicalPath": {
+            "$ref": "#/components/schemas/ResumeSuggestionPath"
+          },
+          "confidence": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Confidence",
+            "type": "number"
+          },
+          "sourceSpan": {
+            "$ref": "#/components/schemas/SourceSpan"
+          },
+          "value": {
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": ["canonicalPath", "value", "confidence", "sourceSpan"],
+        "title": "ResumeFieldSuggestion",
+        "type": "object"
+      },
       "ResumeImportResult": {
         "additionalProperties": false,
         "properties": {
@@ -468,6 +1327,55 @@
         "required": ["snapshot", "document"],
         "title": "ResumeImportResult",
         "type": "object"
+      },
+      "ResumePreviewResult": {
+        "additionalProperties": false,
+        "properties": {
+          "extractedEvidenceCount": {
+            "minimum": 0.0,
+            "title": "Extractedevidencecount",
+            "type": "integer"
+          },
+          "parseErrorCode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parseerrorcode"
+          },
+          "status": {
+            "$ref": "#/components/schemas/DocumentStatus"
+          },
+          "suggestions": {
+            "items": {
+              "$ref": "#/components/schemas/ResumeFieldSuggestion"
+            },
+            "title": "Suggestions",
+            "type": "array"
+          }
+        },
+        "required": ["status", "extractedEvidenceCount"],
+        "title": "ResumePreviewResult",
+        "type": "object"
+      },
+      "ResumeSuggestionPath": {
+        "enum": [
+          "identity.first_name",
+          "identity.last_name",
+          "contact.email",
+          "contact.phone",
+          "links.linkedin",
+          "links.github",
+          "education.0.school",
+          "education.0.degree",
+          "education.0.field_of_study",
+          "education.0.graduation_year"
+        ],
+        "type": "string"
       },
       "SaveCandidateProfileRequest": {
         "additionalProperties": false,
@@ -613,6 +1521,24 @@
         },
         "required": ["start", "end"],
         "title": "SourceSpan",
+        "type": "object"
+      },
+      "StartSyntheticDemoRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "candidateProfileId": {
+            "format": "uuid",
+            "title": "Candidateprofileid",
+            "type": "string"
+          },
+          "candidateProfileVersion": {
+            "minimum": 1.0,
+            "title": "Candidateprofileversion",
+            "type": "integer"
+          }
+        },
+        "required": ["candidateProfileId", "candidateProfileVersion"],
+        "title": "StartSyntheticDemoRequest",
         "type": "object"
       },
       "TransitionRequest": {
@@ -769,10 +1695,112 @@
   },
   "info": {
     "title": "CareerFlow Local API",
-    "version": "0.1.5"
+    "version": "0.1.9"
   },
   "openapi": "3.1.0",
   "paths": {
+    "/v1/application-statistics": {
+      "get": {
+        "operationId": "application_statistics_v1_application_statistics_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplicationStatistics"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Application Statistics"
+      }
+    },
+    "/v1/demo/synthetic-run": {
+      "post": {
+        "operationId": "start_synthetic_run_v1_demo_synthetic_run_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StartSyntheticDemoRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplicationRun"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Start Synthetic Run"
+      }
+    },
     "/v1/events": {
       "get": {
         "operationId": "events_v1_events_get",
@@ -861,6 +1889,174 @@
           }
         },
         "summary": "Health"
+      }
+    },
+    "/v1/jobs/ingest": {
+      "post": {
+        "operationId": "ingest_job_v1_jobs_ingest_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IngestJobRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobPosting"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Ingest Job"
+      }
+    },
+    "/v1/jobs/{job_id}": {
+      "get": {
+        "operationId": "get_job_v1_jobs__job_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobPosting"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Job"
+      }
+    },
+    "/v1/materials/prepare": {
+      "post": {
+        "operationId": "prepare_materials_v1_materials_prepare_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PrepareMaterialsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplicationMaterialPlan"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Prepare Materials"
       }
     },
     "/v1/profile": {
@@ -1093,6 +2289,62 @@
         "summary": "Import Resume"
       }
     },
+    "/v1/profile/resume/preview": {
+      "post": {
+        "operationId": "preview_resume_v1_profile_resume_preview_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_preview_resume_v1_profile_resume_preview_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResumePreviewResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Preview Resume"
+      }
+    },
     "/v1/runs": {
       "get": {
         "operationId": "list_runs_v1_runs_get",
@@ -1255,6 +2507,192 @@
           }
         },
         "summary": "List Run Events"
+      }
+    },
+    "/v1/runs/{run_id}/field-explanations": {
+      "get": {
+        "operationId": "list_field_explanations_v1_runs__run_id__field_explanations_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/FieldExplanation"
+                  },
+                  "title": "Response List Field Explanations V1 Runs  Run Id  Field Explanations Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Field Explanations"
+      }
+    },
+    "/v1/runs/{run_id}/outcome": {
+      "put": {
+        "operationId": "record_application_outcome_v1_runs__run_id__outcome_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecordApplicationOutcomeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplicationOutcome"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Record Application Outcome"
+      }
+    },
+    "/v1/runs/{run_id}/outcomes": {
+      "get": {
+        "operationId": "list_application_outcomes_v1_runs__run_id__outcomes_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ApplicationOutcome"
+                  },
+                  "title": "Response List Application Outcomes V1 Runs  Run Id  Outcomes Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Application Outcomes"
       }
     },
     "/v1/runs/{run_id}/transitions": {

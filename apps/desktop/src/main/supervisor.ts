@@ -1,4 +1,4 @@
-import { randomBytes, randomUUID } from 'node:crypto';
+import { randomBytes } from 'node:crypto';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { createServer } from 'node:net';
@@ -9,15 +9,29 @@ import { context, propagation, SpanStatusCode, trace } from '@opentelemetry/api'
 import { app, utilityProcess, type UtilityProcess } from 'electron';
 
 import {
+  ApplicationMaterialPlanSchema,
+  ApplicationOutcomeSchema,
   ApplicationRunSchema,
+  ApplicationStatisticsSchema,
   CandidateProfileSnapshotSchema,
+  FieldExplanationSchema,
   HealthStatusSchema,
+  JobPostingSchema,
   ResumeImportResultSchema,
+  ResumePreviewResultSchema,
+  RecordApplicationOutcomeRequestSchema,
+  type ApplicationOutcome,
   type ApplicationRun,
+  type ApplicationStatistics,
+  type ApplicationMaterialPlan,
   type CandidateProfileInput,
   type CandidateProfileSnapshot,
+  type FieldExplanation,
   type HealthStatus,
+  type JobPosting,
   type ResumeImportResult,
+  type ResumePreviewResult,
+  type RecordApplicationOutcomeRequest,
 } from '@careerflow/contracts';
 
 const tracer = trace.getTracer('careerflow.desktop.supervisor');
@@ -61,7 +75,7 @@ export class ProcessSupervisor {
       this.readiness ?? {
         status: 'starting',
         service: 'careerflow-agent',
-        version: '0.1.5',
+        version: '0.1.9',
         browserWorkerConnected: false,
         databaseReady: false,
         telemetryReady: false,
@@ -174,6 +188,46 @@ export class ProcessSupervisor {
     return ApplicationRunSchema.array().parse(await response.json());
   }
 
+  async listFieldExplanations(runId: string): Promise<FieldExplanation[]> {
+    if (!this.port || !this.token) throw new Error('Local service is not ready');
+    const response = await fetch(
+      `http://127.0.0.1:${this.port}/v1/runs/${encodeURIComponent(runId)}/field-explanations`,
+      { headers: { Authorization: `Bearer ${this.token}` } },
+    );
+    if (!response.ok) throw await this.responseError(response);
+    return FieldExplanationSchema.array().parse(await response.json());
+  }
+
+  async recordApplicationOutcome(
+    runId: string,
+    input: RecordApplicationOutcomeRequest,
+  ): Promise<ApplicationOutcome> {
+    if (!this.port || !this.token) throw new Error('Local service is not ready');
+    const request = RecordApplicationOutcomeRequestSchema.parse(input);
+    const response = await fetch(
+      `http://127.0.0.1:${this.port}/v1/runs/${encodeURIComponent(runId)}/outcome`,
+      {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${this.token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(request),
+      },
+    );
+    if (!response.ok) throw await this.responseError(response);
+    return ApplicationOutcomeSchema.parse(await response.json());
+  }
+
+  async getApplicationStatistics(): Promise<ApplicationStatistics> {
+    if (!this.port || !this.token) throw new Error('Local service is not ready');
+    const response = await fetch(`http://127.0.0.1:${this.port}/v1/application-statistics`, {
+      headers: { Authorization: `Bearer ${this.token}` },
+    });
+    if (!response.ok) throw await this.responseError(response);
+    return ApplicationStatisticsSchema.parse(await response.json());
+  }
+
   async getProfile(): Promise<CandidateProfileSnapshot | null> {
     if (!this.port || !this.token) throw new Error('Local service is not ready');
     const response = await fetch(`http://127.0.0.1:${this.port}/v1/profile`, {
@@ -222,6 +276,57 @@ export class ProcessSupervisor {
     return ResumeImportResultSchema.parse(await response.json());
   }
 
+  async previewResume(input: {
+    filename: string;
+    mediaType: string;
+    bytes: Uint8Array;
+  }): Promise<ResumePreviewResult> {
+    if (!this.port || !this.token) throw new Error('Local service is not ready');
+    const form = new FormData();
+    const arrayBuffer = new ArrayBuffer(input.bytes.byteLength);
+    new Uint8Array(arrayBuffer).set(input.bytes);
+    form.append('file', new Blob([arrayBuffer], { type: input.mediaType }), input.filename);
+    const response = await fetch(`http://127.0.0.1:${this.port}/v1/profile/resume/preview`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${this.token}` },
+      body: form,
+    });
+    if (!response.ok) throw await this.responseError(response);
+    return ResumePreviewResultSchema.parse(await response.json());
+  }
+
+  async ingestJob(url: string): Promise<JobPosting> {
+    if (!this.port || !this.token) throw new Error('Local service is not ready');
+    const response = await fetch(`http://127.0.0.1:${this.port}/v1/jobs/ingest`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${this.token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ url }),
+    });
+    if (!response.ok) throw await this.responseError(response);
+    return JobPostingSchema.parse(await response.json());
+  }
+
+  async prepareMaterials(input: {
+    jobId: string;
+    candidateProfileId: string;
+    candidateProfileVersion: number;
+  }): Promise<ApplicationMaterialPlan> {
+    if (!this.port || !this.token) throw new Error('Local service is not ready');
+    const response = await fetch(`http://127.0.0.1:${this.port}/v1/materials/prepare`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${this.token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(input),
+    });
+    if (!response.ok) throw await this.responseError(response);
+    return ApplicationMaterialPlanSchema.parse(await response.json());
+  }
+
   async setEvidenceVerification(
     evidenceId: string,
     verified: boolean,
@@ -243,7 +348,11 @@ export class ProcessSupervisor {
     return CandidateProfileSnapshotSchema.parse(await response.json());
   }
 
-  async createRun(jobUrl: string, autoSubmitAuthorized: boolean): Promise<ApplicationRun> {
+  async createRun(
+    jobId: string,
+    jobUrl: string,
+    autoSubmitAuthorized: boolean,
+  ): Promise<ApplicationRun> {
     if (!this.port || !this.token) throw new Error('Local service is not ready');
     return await tracer.startActiveSpan('application.run.create', async (span) => {
       try {
@@ -259,7 +368,7 @@ export class ProcessSupervisor {
           method: 'POST',
           headers,
           body: JSON.stringify({
-            job_id: randomUUID(),
+            job_id: jobId,
             candidate_profile_id: profile.profile.id,
             candidate_profile_version: profile.profile.version,
             autoSubmitAuthorized,
@@ -279,6 +388,25 @@ export class ProcessSupervisor {
         span.end();
       }
     });
+  }
+
+  async startSyntheticDemo(): Promise<ApplicationRun> {
+    if (!this.port || !this.token) throw new Error('Local service is not ready');
+    const profile = await this.getProfile();
+    if (!profile) throw new Error('Create your verified profile before testing autofill');
+    const response = await fetch(`http://127.0.0.1:${this.port}/v1/demo/synthetic-run`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${this.token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        candidateProfileId: profile.profile.id,
+        candidateProfileVersion: profile.profile.version,
+      }),
+    });
+    if (!response.ok) throw await this.responseError(response);
+    return ApplicationRunSchema.parse(await response.json());
   }
 
   private async waitForHealth(): Promise<HealthStatus> {
@@ -327,6 +455,14 @@ export class ProcessSupervisor {
     try {
       const body = (await response.json()) as { detail?: unknown };
       if (typeof body.detail === 'string') return new Error(body.detail);
+      if (
+        body.detail &&
+        typeof body.detail === 'object' &&
+        'message' in body.detail &&
+        typeof body.detail.message === 'string'
+      ) {
+        return new Error(body.detail.message);
+      }
     } catch {
       // Fall through to the status-only error when the local service returned no JSON body.
     }

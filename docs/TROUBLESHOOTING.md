@@ -1,6 +1,6 @@
 # CareerFlow Problem and Solution Log
 
-Last updated: 2026-09-02
+Last updated: 2026-09-03
 
 ## Purpose
 
@@ -28,6 +28,46 @@ Each entry should include:
 - **Prevention:** the regression guard or follow-up work.
 
 ## Resolved problems
+
+### CF-017 — Visible Chrome integration could not launch inside the restricted test sandbox
+
+- **Status:** resolved as a test-environment issue
+- **Area:** Playwright visible-browser integration verification
+- **Symptom:** The opt-in Safe Autofill Lab integration test launched Google Chrome, but Chrome aborted while its crash handler attempted to access OS-managed application-support services and files.
+- **Root cause:** The restricted command sandbox allowed repository writes but did not grant the macOS process and application-support permissions required by a visible GUI browser.
+- **Resolution:** Run the same narrowly scoped integration command with approved GUI access; no application code or browser security boundary was weakened.
+- **Verification:** `pnpm browser:test:integration` opened visible Google Chrome, scanned all 12 controls, filled an approved field, detected the form-state change, rejected reuse of the stale scan hash, and closed cleanly.
+- **Prevention:** Keep the visible-browser test opt-in and separate from headless CI. Run it in a macOS release environment with Google Chrome and GUI permission before accepting a DMG.
+
+### CF-016 — Clickable LinkedIn and GitHub labels were not extracted from PDFs
+
+- **Status:** resolved
+- **Area:** deterministic résumé parsing and first-time profile preview
+- **Symptom:** A selectable-text résumé displayed clickable LinkedIn and GitHub labels, but CareerFlow did not suggest either profile URL.
+- **Root cause:** PDF text extraction reads the visible label from a page content stream but does not return the destination stored separately in the page's `/Link` annotation and `/URI` action.
+- **Resolution:** Inspect a bounded number of page annotations locally and add recognized profile destinations to the parsed evidence stream with page and `hyperlink` provenance. Accept only HTTP(S) LinkedIn `/in/…` links and single-segment GitHub profile links; normalize to HTTPS and discard repository links, unrelated hosts, queries, fragments, credentials, non-standard ports, and non-HTTP(S) schemes. Keep the token-free field-preview action available for existing profiles so the user can recover new suggestions without attempting a duplicate evidence import; only empty fields are filled and the user must save them explicitly.
+- **Verification:** A synthetic regression PDF recovers both profile links while excluding a GitHub repository URL and a script-scheme URL. A privacy-safe local check of the supplied two-page résumé reports both profile fields found on page 1. A desktop regression proves suggestions fill an empty link without replacing an existing verified link. All 24 Python and 11 TypeScript tests, repository checks, strict mypy, production build, packaged-runtime verification, and DMG verification pass.
+- **Prevention:** The annotation regression fixture and URL-boundary assertions run with the normal Python test suite; annotation inspection and evidence output remain explicitly bounded.
+
+### CF-015 — Workday requirements were missed when metadata flattened the description
+
+- **Status:** resolved
+- **Area:** deterministic job ingestion
+- **Symptom:** The supplied public Workday posting produced the correct title, company, location, and platform but zero requirements, leaving the review in `needs_review`.
+- **Root cause:** Workday exposed the full description as one flattened JSON-LD/Open Graph string without list or heading line breaks. The first parser pass intentionally rejected an oversized one-line candidate, so the embedded `Your Background` section was not segmented.
+- **Resolution:** Add a bounded second deterministic pass that isolates known requirement headings, stops before EEO/benefits/company sections, and separates sentence and common qualification starts while retaining exact source offsets.
+- **Verification:** A sanitized flattened-Workday regression fixture recovers four requirements with exact source spans. The supplied posting recovers six requirements, reports Workday at 0.99 confidence, and completes without warnings or a model call.
+- **Prevention:** Both structured HTML-list and flattened Workday representations are regression tested. Ingestion remains `needs_review` when neither deterministic pass finds requirements.
+
+### CF-014 — Résumé import was disabled before manual profile creation
+
+- **Status:** resolved
+- **Area:** first-time profile onboarding and résumé extraction
+- **Symptom:** The résumé picker and import button were disabled for a new user, forcing manual profile creation before CareerFlow could read a résumé.
+- **Root cause:** The renderer gated both controls on an existing `CandidateProfileSnapshot`, and the only résumé API required an existing immutable profile version because it immediately persisted encrypted evidence.
+- **Resolution:** Add a separate authenticated, non-persistent preview path that parses the selected PDF/DOCX in memory and suggests supported profile fields with confidence and source spans. The renderer fills only empty fields for review. After the user saves the required identity fields, the existing import path encrypts the original and attaches its evidence to the new profile version.
+- **Verification:** The API regression test extracts ten supported fields before profile creation and confirms the profile remains absent. All 18 Python tests, nine TypeScript tests, formatting, Ruff, TypeScript checks, strict mypy, generated-contract validation, and the production build pass.
+- **Prevention:** Shared runtime schemas cover preview output, and onboarding copy explicitly distinguishes local suggestions from verified saved facts. Preview parsing makes no model or network request and records only count/status telemetry.
 
 ### CF-001 — Installed DMG crashed while loading TypeScript from `node_modules`
 

@@ -4,6 +4,40 @@
  */
 
 export interface paths {
+  '/v1/application-statistics': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Application Statistics */
+    get: operations['application_statistics_v1_application_statistics_get'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/demo/synthetic-run': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Start Synthetic Run */
+    post: operations['start_synthetic_run_v1_demo_synthetic_run_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/v1/events': {
     parameters: {
       query?: never;
@@ -32,6 +66,57 @@ export interface paths {
     get: operations['health_v1_health_get'];
     put?: never;
     post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/jobs/ingest': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Ingest Job */
+    post: operations['ingest_job_v1_jobs_ingest_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/jobs/{job_id}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Get Job */
+    get: operations['get_job_v1_jobs__job_id__get'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/materials/prepare': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Prepare Materials */
+    post: operations['prepare_materials_v1_materials_prepare_post'];
     delete?: never;
     options?: never;
     head?: never;
@@ -90,6 +175,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/v1/profile/resume/preview': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Preview Resume */
+    post: operations['preview_resume_v1_profile_resume_preview_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/v1/runs': {
     parameters: {
       query?: never;
@@ -125,6 +227,57 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/v1/runs/{run_id}/field-explanations': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List Field Explanations */
+    get: operations['list_field_explanations_v1_runs__run_id__field_explanations_get'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/runs/{run_id}/outcome': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /** Record Application Outcome */
+    put: operations['record_application_outcome_v1_runs__run_id__outcome_put'];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/runs/{run_id}/outcomes': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List Application Outcomes */
+    get: operations['list_application_outcomes_v1_runs__run_id__outcomes_get'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/v1/runs/{run_id}/transitions': {
     parameters: {
       query?: never;
@@ -146,6 +299,84 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
   schemas: {
+    /** ApplicationMaterialPlan */
+    ApplicationMaterialPlan: {
+      /**
+       * Candidateprofileid
+       * Format: uuid
+       */
+      candidateProfileId: string;
+      /** Candidateprofileversion */
+      candidateProfileVersion: number;
+      /** Coverageratio */
+      coverageRatio: number;
+      /**
+       * Createdat
+       * Format: date-time
+       */
+      createdAt?: string;
+      /**
+       * Generatorversion
+       * @default deterministic-v1
+       * @constant
+       */
+      generatorVersion: 'deterministic-v1';
+      /**
+       * Jobid
+       * Format: uuid
+       */
+      jobId: string;
+      /** Jobversion */
+      jobVersion: number;
+      /** Mappings */
+      mappings?: components['schemas']['RequirementEvidenceMapping'][];
+      /**
+       * Modelused
+       * @default false
+       * @constant
+       */
+      modelUsed: false;
+      /** Partialcount */
+      partialCount: number;
+      resumeDraft: components['schemas']['GroundedResumeDraft'];
+      status: components['schemas']['MaterialPlanStatus'];
+      /** Supportedcount */
+      supportedCount: number;
+      /** Unsupportedcount */
+      unsupportedCount: number;
+    };
+    /** ApplicationOutcome */
+    ApplicationOutcome: {
+      /** Confirmation */
+      confirmation?: components['schemas']['ConfirmationEvidence'][];
+      /**
+       * Id
+       * Format: uuid
+       */
+      id?: string;
+      outcome: components['schemas']['OutcomeType'];
+      reasonCode: components['schemas']['OutcomeReasonCode'];
+      /**
+       * Recordedat
+       * Format: date-time
+       */
+      recordedAt?: string;
+      /**
+       * Recordedby
+       * @default user
+       * @constant
+       */
+      recordedBy: 'user';
+      /** Revision */
+      revision: number;
+      /**
+       * Runid
+       * Format: uuid
+       */
+      runId: string;
+      /** Supersedesid */
+      supersedesId?: string | null;
+    };
     /** ApplicationRun */
     ApplicationRun: {
       /**
@@ -160,6 +391,8 @@ export interface components {
       candidateProfileId: string;
       /** Candidateprofileversion */
       candidateProfileVersion: number;
+      /** Company */
+      company?: string | null;
       /**
        * Createdat
        * Format: date-time
@@ -175,11 +408,15 @@ export interface components {
        * Format: uuid
        */
       jobId: string;
+      /** Jobtitle */
+      jobTitle?: string | null;
       /**
        * Joburl
        * Format: uri
        */
       jobUrl: string;
+      latestOutcome?: components['schemas']['ApplicationOutcome'] | null;
+      platform?: components['schemas']['Platform'] | null;
       /** @default created */
       state: components['schemas']['WorkflowState'];
       /**
@@ -188,10 +425,43 @@ export interface components {
        */
       updatedAt?: string;
     };
+    /** ApplicationStatistics */
+    ApplicationStatistics: {
+      /** Abandoned */
+      abandoned: number;
+      /** Cancelled */
+      cancelled: number;
+      /** Failed */
+      failed: number;
+      /**
+       * Generatedat
+       * Format: date-time
+       */
+      generatedAt?: string;
+      /** Outcomeuncertain */
+      outcomeUncertain: number;
+      /** Pendingruns */
+      pendingRuns: number;
+      /** Resolutionrate */
+      resolutionRate: number;
+      /** Resolvedruns */
+      resolvedRuns: number;
+      /** Submitted */
+      submitted: number;
+      /** Submittedrate */
+      submittedRate: number;
+      /** Totalruns */
+      totalRuns: number;
+    };
     /** Body_import_resume_v1_profile_resume_post */
     Body_import_resume_v1_profile_resume_post: {
       /** Expected Version */
       expected_version: number;
+      /** File */
+      file: string;
+    };
+    /** Body_preview_resume_v1_profile_resume_preview_post */
+    Body_preview_resume_v1_profile_resume_preview_post: {
       /** File */
       file: string;
     };
@@ -308,6 +578,23 @@ export interface components {
        */
       updatedAt?: string;
     };
+    /** ConfirmationEvidence */
+    ConfirmationEvidence: {
+      /** Artifactref */
+      artifactRef?: string | null;
+      /**
+       * Capturedat
+       * Format: date-time
+       */
+      capturedAt?: string;
+      /** Fingerprint */
+      fingerprint: string;
+      /**
+       * Kind
+       * @enum {string}
+       */
+      kind: 'confirmation_page' | 'application_id' | 'confirmation_email' | 'user_correction';
+    };
     /** CreateRunRequest */
     CreateRunRequest: {
       /**
@@ -368,11 +655,89 @@ export interface components {
        */
       verified: boolean;
     };
+    /** EvidenceMatch */
+    EvidenceMatch: {
+      /**
+       * Evidenceid
+       * Format: uuid
+       */
+      evidenceId: string;
+      /** Matchedterms */
+      matchedTerms?: string[];
+      /** Score */
+      score: number;
+      /** Sourcedocumentid */
+      sourceDocumentId?: string | null;
+      sourceSpan?: components['schemas']['SourceSpan'] | null;
+      /** Statement */
+      statement: string;
+    };
     /**
      * FactState
      * @enum {string}
      */
     FactState: 'extracted' | 'needs_review' | 'verified' | 'superseded' | 'deleted';
+    /** FieldExplanation */
+    FieldExplanation: {
+      /** Canonicalpath */
+      canonicalPath?: string | null;
+      /** Confidence */
+      confidence: number;
+      /** Controlid */
+      controlId: string;
+      decision: components['schemas']['MappingDecision'];
+      /** Filled */
+      filled: boolean;
+      /**
+       * Id
+       * Format: uuid
+       */
+      id?: string;
+      /** Pagestatehash */
+      pageStateHash: string;
+      /** Rationale */
+      rationale: string;
+      /**
+       * Recordedat
+       * Format: date-time
+       */
+      recordedAt?: string;
+      /**
+       * Runid
+       * Format: uuid
+       */
+      runId: string;
+      sensitivity: components['schemas']['Sensitivity'];
+      /**
+       * Source
+       * @enum {string}
+       */
+      source: 'adapter' | 'deterministic' | 'model' | 'user';
+      /** Stepid */
+      stepId: string;
+    };
+    /** GroundedResumeDraft */
+    GroundedResumeDraft: {
+      /** Entries */
+      entries?: components['schemas']['GroundedResumeEntry'][];
+      /** Title */
+      title: string;
+    };
+    /** GroundedResumeEntry */
+    GroundedResumeEntry: {
+      /**
+       * Evidenceid
+       * Format: uuid
+       */
+      evidenceId: string;
+      /** Sourcedocumentid */
+      sourceDocumentId?: string | null;
+      sourceSpan?: components['schemas']['SourceSpan'] | null;
+      /** Statement */
+      statement: string;
+      /** Supportsrequirementids */
+      supportsRequirementIds?: string[];
+    };
     /** HTTPValidationError */
     HTTPValidationError: {
       /** Detail */
@@ -399,11 +764,218 @@ export interface components {
       /** Version */
       version: string;
     };
+    /** IngestJobRequest */
+    IngestJobRequest: {
+      /**
+       * Url
+       * Format: uri
+       */
+      url: string;
+    };
+    /**
+     * JobIngestionStatus
+     * @enum {string}
+     */
+    JobIngestionStatus: 'complete' | 'needs_review';
+    /** JobPosting */
+    JobPosting: {
+      /**
+       * Canonicalurl
+       * Format: uri
+       */
+      canonicalUrl: string;
+      /** Company */
+      company: string;
+      /** Description */
+      description: string;
+      /** Descriptionhash */
+      descriptionHash: string;
+      /**
+       * Id
+       * Format: uuid
+       */
+      id?: string;
+      /**
+       * Location
+       * @default
+       */
+      location: string;
+      platform: components['schemas']['PlatformDetection'];
+      /** Requirements */
+      requirements?: components['schemas']['JobRequirement'][];
+      /**
+       * Resolvedurl
+       * Format: uri
+       */
+      resolvedUrl: string;
+      /**
+       * Retrievedat
+       * Format: date-time
+       */
+      retrievedAt?: string;
+      /**
+       * Sourceurl
+       * Format: uri
+       */
+      sourceUrl: string;
+      status: components['schemas']['JobIngestionStatus'];
+      /** Supersedesid */
+      supersedesId?: string | null;
+      /** Title */
+      title: string;
+      /**
+       * Version
+       * @default 1
+       */
+      version: number;
+      /** Warnings */
+      warnings?: string[];
+    };
+    /** JobRequirement */
+    JobRequirement: {
+      /**
+       * Id
+       * Format: uuid
+       */
+      id?: string;
+      /** Required */
+      required: boolean;
+      sourceSpan: components['schemas']['SourceSpan'];
+      /** Text */
+      text: string;
+    };
+    /**
+     * MappingDecision
+     * @enum {string}
+     */
+    MappingDecision: 'auto_fill' | 'review' | 'human_required' | 'unsupported';
+    /**
+     * MaterialPlanStatus
+     * @enum {string}
+     */
+    MaterialPlanStatus: 'needs_review' | 'needs_evidence';
+    /**
+     * OutcomeReasonCode
+     * @enum {string}
+     */
+    OutcomeReasonCode:
+      | 'user_confirmed_submitted'
+      | 'ingestion_failed'
+      | 'evidence_missing'
+      | 'authentication_failed'
+      | 'registration_failed'
+      | 'verification_failed'
+      | 'mapping_failed'
+      | 'validation_failed'
+      | 'submission_failed'
+      | 'platform_changed'
+      | 'policy_blocked'
+      | 'user_cancelled'
+      | 'user_abandoned'
+      | 'confirmation_missing';
+    /**
+     * OutcomeType
+     * @enum {string}
+     */
+    OutcomeType: 'submitted' | 'failed' | 'cancelled' | 'abandoned' | 'outcome_uncertain';
+    /**
+     * Platform
+     * @enum {string}
+     */
+    Platform: 'synthetic' | 'workday' | 'greenhouse' | 'lever' | 'unknown';
+    /** PlatformDetection */
+    PlatformDetection: {
+      /** Confidence */
+      confidence: number;
+      platform: components['schemas']['Platform'];
+      /** Signals */
+      signals?: string[];
+    };
+    /** PrepareMaterialsRequest */
+    PrepareMaterialsRequest: {
+      /**
+       * Candidateprofileid
+       * Format: uuid
+       */
+      candidateProfileId: string;
+      /** Candidateprofileversion */
+      candidateProfileVersion: number;
+      /**
+       * Jobid
+       * Format: uuid
+       */
+      jobId: string;
+    };
+    /** RecordApplicationOutcomeRequest */
+    RecordApplicationOutcomeRequest: {
+      /**
+       * Confirmedbyuser
+       * @constant
+       */
+      confirmedByUser: true;
+      outcome: components['schemas']['OutcomeType'];
+      reasonCode: components['schemas']['OutcomeReasonCode'];
+    };
+    /** RequirementEvidenceMapping */
+    RequirementEvidenceMapping: {
+      /** Confidence */
+      confidence: number;
+      /** Explanation */
+      explanation: string;
+      /** Matches */
+      matches?: components['schemas']['EvidenceMatch'][];
+      /** Required */
+      required: boolean;
+      /**
+       * Requirementid
+       * Format: uuid
+       */
+      requirementId: string;
+      /** Requirementtext */
+      requirementText: string;
+      support: components['schemas']['RequirementSupport'];
+    };
+    /**
+     * RequirementSupport
+     * @enum {string}
+     */
+    RequirementSupport: 'supported' | 'partial' | 'unsupported';
+    /** ResumeFieldSuggestion */
+    ResumeFieldSuggestion: {
+      canonicalPath: components['schemas']['ResumeSuggestionPath'];
+      /** Confidence */
+      confidence: number;
+      sourceSpan: components['schemas']['SourceSpan'];
+      /** Value */
+      value: string;
+    };
     /** ResumeImportResult */
     ResumeImportResult: {
       document: components['schemas']['SourceDocument'];
       snapshot: components['schemas']['CandidateProfileSnapshot'];
     };
+    /** ResumePreviewResult */
+    ResumePreviewResult: {
+      /** Extractedevidencecount */
+      extractedEvidenceCount: number;
+      /** Parseerrorcode */
+      parseErrorCode?: string | null;
+      status: components['schemas']['DocumentStatus'];
+      /** Suggestions */
+      suggestions?: components['schemas']['ResumeFieldSuggestion'][];
+    };
+    /** @enum {string} */
+    ResumeSuggestionPath:
+      | 'identity.first_name'
+      | 'identity.last_name'
+      | 'contact.email'
+      | 'contact.phone'
+      | 'links.linkedin'
+      | 'links.github'
+      | 'education.0.school'
+      | 'education.0.degree'
+      | 'education.0.field_of_study'
+      | 'education.0.graduation_year';
     /** SaveCandidateProfileRequest */
     SaveCandidateProfileRequest: {
       /** Expectedversion */
@@ -467,6 +1039,16 @@ export interface components {
       section?: string | null;
       /** Start */
       start: number;
+    };
+    /** StartSyntheticDemoRequest */
+    StartSyntheticDemoRequest: {
+      /**
+       * Candidateprofileid
+       * Format: uuid
+       */
+      candidateProfileId: string;
+      /** Candidateprofileversion */
+      candidateProfileVersion: number;
     };
     /** TransitionRequest */
     TransitionRequest: {
@@ -549,6 +1131,72 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+  application_statistics_v1_application_statistics_get: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ApplicationStatistics'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  start_synthetic_run_v1_demo_synthetic_run_post: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['StartSyntheticDemoRequest'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ApplicationRun'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
   events_v1_events_get: {
     parameters: {
       query?: never;
@@ -598,6 +1246,109 @@ export interface operations {
         };
         content: {
           'application/json': components['schemas']['HealthStatus'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  ingest_job_v1_jobs_ingest_post: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['IngestJobRequest'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['JobPosting'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  get_job_v1_jobs__job_id__get: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        job_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['JobPosting'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  prepare_materials_v1_materials_prepare_post: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['PrepareMaterialsRequest'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ApplicationMaterialPlan'];
         };
       };
       /** @description Validation Error */
@@ -749,6 +1500,41 @@ export interface operations {
       };
     };
   };
+  preview_resume_v1_profile_resume_preview_post: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'multipart/form-data': components['schemas']['Body_preview_resume_v1_profile_resume_preview_post'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ResumePreviewResult'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
   list_runs_v1_runs_get: {
     parameters: {
       query?: never;
@@ -835,6 +1621,109 @@ export interface operations {
         };
         content: {
           'application/json': components['schemas']['WorkflowEvent'][];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  list_field_explanations_v1_runs__run_id__field_explanations_get: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        run_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['FieldExplanation'][];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  record_application_outcome_v1_runs__run_id__outcome_put: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        run_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['RecordApplicationOutcomeRequest'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ApplicationOutcome'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  list_application_outcomes_v1_runs__run_id__outcomes_get: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        run_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ApplicationOutcome'][];
         };
       };
       /** @description Validation Error */

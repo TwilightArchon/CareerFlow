@@ -1,6 +1,10 @@
 import { FormEvent, useEffect, useState } from 'react';
 
-import type { CandidateProfileInput, CandidateProfileSnapshot } from '@careerflow/contracts';
+import type {
+  CandidateProfileInput,
+  CandidateProfileSnapshot,
+  ResumeFieldSuggestion,
+} from '@careerflow/contracts';
 
 const emptyProfile: CandidateProfileInput = {
   firstName: '',
@@ -55,6 +59,76 @@ function fromSnapshot(snapshot: CandidateProfileSnapshot | null): CandidateProfi
   };
 }
 
+function resumePayload(file: File): {
+  filename: string;
+  mediaType: string;
+  bytes: Promise<Uint8Array>;
+} {
+  const extension = file.name.toLowerCase().split('.').pop();
+  return {
+    filename: file.name,
+    mediaType:
+      file.type ||
+      (extension === 'pdf'
+        ? 'application/pdf'
+        : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'),
+    bytes: file.arrayBuffer().then((buffer) => new Uint8Array(buffer)),
+  };
+}
+
+export function applyResumeSuggestions(
+  current: CandidateProfileInput,
+  suggestions: ResumeFieldSuggestion[],
+): { profile: CandidateProfileInput; appliedCount: number } {
+  const profile = { ...current };
+  let appliedCount = 0;
+  const apply = (condition: boolean, update: () => void): void => {
+    if (!condition) return;
+    update();
+    appliedCount += 1;
+  };
+
+  for (const suggestion of suggestions) {
+    switch (suggestion.canonicalPath) {
+      case 'identity.first_name':
+        apply(!profile.firstName.trim(), () => (profile.firstName = suggestion.value));
+        break;
+      case 'identity.last_name':
+        apply(!profile.lastName.trim(), () => (profile.lastName = suggestion.value));
+        break;
+      case 'contact.email':
+        apply(!profile.email.trim(), () => (profile.email = suggestion.value));
+        break;
+      case 'contact.phone':
+        apply(!profile.phone.trim(), () => (profile.phone = suggestion.value));
+        break;
+      case 'links.linkedin':
+        apply(!profile.linkedinUrl, () => (profile.linkedinUrl = suggestion.value));
+        break;
+      case 'links.github':
+        apply(!profile.githubUrl, () => (profile.githubUrl = suggestion.value));
+        break;
+      case 'education.0.school':
+        apply(!profile.school.trim(), () => (profile.school = suggestion.value));
+        break;
+      case 'education.0.degree':
+        apply(!profile.degree.trim(), () => (profile.degree = suggestion.value));
+        break;
+      case 'education.0.field_of_study':
+        apply(!profile.fieldOfStudy.trim(), () => (profile.fieldOfStudy = suggestion.value));
+        break;
+      case 'education.0.graduation_year': {
+        const year = Number(suggestion.value);
+        apply(profile.graduationYear === null && Number.isInteger(year), () => {
+          profile.graduationYear = year;
+        });
+        break;
+      }
+    }
+  }
+  return { profile, appliedCount };
+}
+
 export function ProfileView({
   snapshot,
   loading,
@@ -88,11 +162,30 @@ export function ProfileView({
     setSaved(false);
     setError(undefined);
     try {
-      const next = await window.careerflow.saveProfile({
+      let next = await window.careerflow.saveProfile({
         profile,
         expectedVersion: snapshot?.profile.version ?? null,
       });
       onSaved(next);
+      if (!snapshot && resumeFile) {
+        const payload = resumePayload(resumeFile);
+        const result = await window.careerflow.importResume({
+          filename: payload.filename,
+          mediaType: payload.mediaType,
+          bytes: await payload.bytes,
+          expectedVersion: next.profile.version,
+        });
+        next = result.snapshot;
+        onSaved(next);
+        setResumeFile(null);
+        setImportMessage(
+          result.document.status === 'parsed'
+            ? `${result.document.extractedEvidenceCount} evidence items encrypted and ready for review.`
+            : result.document.status === 'needs_ocr'
+              ? 'The encrypted PDF was retained, but it has no selectable text. OCR is not implemented yet.'
+              : `The encrypted document was retained, but parsing failed (${result.document.parseErrorCode ?? 'unknown error'}).`,
+        );
+      }
       setSaved(true);
     } catch (caught) {
       setError(
@@ -103,22 +196,44 @@ export function ProfileView({
     }
   }
 
-  async function importResume(): Promise<void> {
-    if (!snapshot || !resumeFile) return;
+  async function extractResumeDetails(): Promise<void> {
+    if (!resumeFile) return;
     setImporting(true);
     setImportMessage(undefined);
     setError(undefined);
     try {
-      const extension = resumeFile.name.toLowerCase().split('.').pop();
-      const mediaType =
-        resumeFile.type ||
-        (extension === 'pdf'
-          ? 'application/pdf'
-          : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+      const payload = resumePayload(resumeFile);
+      const preview = await window.careerflow.previewResume({
+        filename: payload.filename,
+        mediaType: payload.mediaType,
+        bytes: await payload.bytes,
+      });
+      setProfile((current) => applyResumeSuggestions(current, preview.suggestions).profile);
+      setImportMessage(
+        preview.status === 'parsed'
+          ? `${preview.suggestions.length} profile suggestions found locally from ${preview.extractedEvidenceCount} résumé statements. Empty fields were filled; review them, then ${snapshot ? 'save your changes' : 'create your encrypted profile to store the document'}.`
+          : preview.status === 'needs_ocr'
+            ? 'This PDF has no selectable text or supported profile links. Fill the required fields manually.'
+            : `The résumé could not be parsed (${preview.parseErrorCode ?? 'unknown error'}). You can continue with manual fields.`,
+      );
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'The résumé could not be read.');
+    } finally {
+      setImporting(false);
+    }
+  }
+
+  async function importResume(): Promise<void> {
+    if (!resumeFile || !snapshot) return;
+    setImporting(true);
+    setImportMessage(undefined);
+    setError(undefined);
+    try {
+      const payload = resumePayload(resumeFile);
       const result = await window.careerflow.importResume({
-        filename: resumeFile.name,
-        mediaType,
-        bytes: new Uint8Array(await resumeFile.arrayBuffer()),
+        filename: payload.filename,
+        mediaType: payload.mediaType,
+        bytes: await payload.bytes,
         expectedVersion: snapshot.profile.version,
       });
       onSaved(result.snapshot);
@@ -204,19 +319,32 @@ export function ProfileView({
               type="file"
               accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
               onChange={(event) => setResumeFile(event.target.files?.[0] ?? null)}
-              disabled={!snapshot || importing}
+              disabled={importing}
             />
           </label>
           <button
             type="button"
             className="secondary-button"
-            disabled={!snapshot || !resumeFile || importing}
-            onClick={() => void importResume()}
+            disabled={!resumeFile || importing}
+            onClick={() => void extractResumeDetails()}
           >
-            {importing ? 'Encrypting and extracting…' : 'Import résumé'}
+            {importing ? 'Reading locally…' : 'Extract profile details'}
           </button>
+          {snapshot && (
+            <button
+              type="button"
+              className="secondary-button"
+              disabled={!resumeFile || importing}
+              onClick={() => void importResume()}
+            >
+              Import résumé evidence
+            </button>
+          )}
         </div>
-        {!snapshot && <p className="form-hint">Create your encrypted profile before importing.</p>}
+        <p className="form-hint">
+          CareerFlow extracts suggestions locally without AI tokens and fills only empty fields.
+          Review and save them separately; importing evidence encrypts the source document.
+        </p>
         {importMessage && <p className="success">{importMessage}</p>}
         {snapshot && snapshot.profile.sourceDocuments.length > 0 && (
           <div className="source-document-list">
@@ -494,7 +622,7 @@ export function ProfileView({
           {error && <p className="error">{error}</p>}
           {saved && <p className="success">Encrypted profile saved as a new version.</p>}
         </div>
-        <button className="primary-button" type="submit" disabled={saving}>
+        <button className="primary-button" type="submit" disabled={saving || importing}>
           {saving ? 'Encrypting…' : snapshot ? 'Save new version' : 'Create encrypted profile'}
         </button>
       </section>

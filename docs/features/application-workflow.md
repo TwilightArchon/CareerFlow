@@ -2,7 +2,7 @@
 
 Status: foundation implemented  
 Owner: `services/agent`  
-Last updated: 2026-08-23
+Last updated: 2026-09-03
 
 ## Purpose
 
@@ -46,4 +46,8 @@ Use transition-table tests, property tests for invalid transitions, injected cra
 
 ## Current implementation
 
-Canonical states and allowed transitions are enforced in a service layer. Runs and append-only events persist in SQLite, transition idempotency is protected by unique keys, and `submitting` is rejected without per-run authorization. Browser navigation moves an immediate run through the initial states and records its result. The desktop restores and refreshes current run states from the durable store after relaunch. Durable execution resumption, checkpoints, explicit queue ordering, cancellation, retries, timeouts, LangGraph execution, and crash-injection coverage remain pending.
+Canonical states and allowed transitions are enforced in a service layer. Runs and append-only events persist in SQLite, transition idempotency is protected by unique keys, and `submitting` is rejected without per-run authorization. Before run creation, the desktop now requires a version-checked grounded material plan; missing eligible verified evidence blocks navigation with a review path. The current plan is recomputable renderer state and is not yet a durable workflow checkpoint. Browser navigation moves an immediate run through the initial states and records its result.
+
+A Safe Autofill Lab synthetic run moves through scan, filling, validation, and `awaiting_human`; its workflow events persist observed, filled, and review-required counts without values. The scan hash gates the fill, and the exact profile version is rechecked before any value is sent to the browser worker. The desktop restores and refreshes current run states from the durable store after relaunch. Durable material approval, execution resumption, checkpoints, explicit queue ordering, cancellation, retries, timeouts, LangGraph execution, and crash-injection coverage remain pending.
+
+User-confirmed application outcomes are tracked as a separate append-only projection and do not rewrite the workflow transition history. Recording an outcome removes an otherwise non-terminal run from the active desktop queue, while its last workflow state remains inspectable in Applications. Future automated submission must still use the canonical `submitting` → `submitted` transition and attach external confirmation evidence.

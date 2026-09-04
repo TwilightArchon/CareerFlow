@@ -1,7 +1,7 @@
 # CareerFlow Architecture
 
 Status: accepted and in implementation; governed by `docs/adr/0001-desktop-first.md`  
-Last updated: 2026-08-24
+Last updated: 2026-09-03
 
 ## System shape
 
@@ -38,7 +38,7 @@ A Python FastAPI service with Pydantic schemas coordinates explicit application 
 ### Storage
 
 - Operating-system keychain: passwords, OAuth refresh tokens, encryption keys.
-- SQLite through SQLAlchemy and Alembic: workflow events, checkpoints, application indexes, explanations, and non-sensitive metadata.
+- SQLite through SQLAlchemy and Alembic: workflow events, checkpoints, application indexes, field-level mapping/policy explanations, append-only outcome revisions, and non-sensitive metadata. Field explanation and outcome rows deliberately omit candidate values and free-form application answers.
 - AES-256-GCM encrypted payloads and artifacts: candidate facts, answers, resumes, source documents, and model snapshots.
 - Artifact storage: resumes, source documents, screenshots, and confirmation evidence, encrypted at rest.
 - PostgreSQL and Redis are explicitly deferred. Portfolio scalability means isolated local execution across installations, not centralized browser concurrency.
@@ -58,7 +58,11 @@ OpenTelemetry SDKs in TypeScript and Python propagate W3C trace context across d
 - Python owns canonical Pydantic contracts and OpenAPI. TypeScript definitions are generated from that schema.
 - The renderer never treats its component state as application history. Electron retrieves current runs from the authenticated local API, validates the response against shared runtime schemas, and the UI refreshes its queue and Applications view from SQLite after startup and while open.
 - Candidate profiles use one stable identifier and immutable versions. Each version is serialized as canonical verified facts, encrypted with AES-256-GCM using version-bound associated data, and stored as ciphertext in SQLite. The encryption key is created and retrieved only through macOS Keychain; a missing or invalid key fails closed instead of replacing it.
-- Résumé files enter through an allowlisted renderer byte-array IPC and authenticated multipart loopback request. Python deterministically parses selectable-text PDF/DOCX content, stores the original as an AES-256-GCM artifact with document-bound associated data, and records only encrypted profile payloads plus non-secret indexes. Extracted statements remain unverified until explicit user review; manual profile edits preserve imported evidence history.
+- Résumé files enter through allowlisted renderer byte-array IPC and authenticated multipart loopback requests. During first-time onboarding, a non-persistent preview endpoint deterministically suggests identity, contact, link, and education fields before a profile exists; PDF parsing reads both selectable page text and allowlisted LinkedIn/GitHub profile destinations from external-link annotations. The renderer fills only empty fields and the user reviews them before saving. No preview value is logged, persisted, or sent to a model. After profile creation, Python parses the same selectable-text PDF/DOCX content, stores the original as an AES-256-GCM artifact with document-bound associated data, and records only encrypted profile payloads plus non-secret indexes. Extracted statements remain unverified until explicit user review; manual profile edits preserve imported evidence history.
+- Public job ingestion runs through the authenticated local API before an application run exists. Python validates every initial and redirected HTTP(S) target against DNS-resolved public addresses, streams a bounded response, prefers JSON-LD/Open Graph data, derives source-spanned requirements deterministically, and persists a versioned normalized job record. The renderer presents that record for confirmation; only confirmation creates a run and asks the visible browser to navigate.
+- Material preparation runs locally against the exact current immutable profile version and persisted job version. The deterministic baseline excludes unverified evidence, non-ordinary manual facts, and contact-like statements; ranks remaining statements by normalized requirement-term coverage; and returns supported, partial, or unsupported mappings plus a verbatim evidence draft. The response is recomputable and is not duplicated into plaintext SQLite. Changing the profile invalidates the renderer's plan, and browser navigation requires a current plan that is not blocked on missing verified evidence.
+- A bounded Safe Autofill Lab creates a durable synthetic run, and the browser worker fulfills an app-owned `.invalid` page in memory, scans conventional form semantics, and returns a typed observation. Python maps controls, reasserts canonical sensitivity, applies policy, rechecks the immutable profile version, and sends only approved values with the scan hash. The worker rejects stale hashes, fills idempotently, and returns mapping metadata without values. The fixture cannot submit or contact an employer.
+- User-confirmed application outcomes are append-only revisions with schema-constrained reason codes. The latest revision is joined into the run projection, while aggregate statistics are recomputed from durable records rather than OpenTelemetry. A submitted correction carries a deterministic non-PII confirmation fingerprint and cannot be written without an explicit confirmation flag.
 - OpenAI calls use the Responses API, `store=false`, strict structured outputs, and no browser, keychain, email, filesystem, or submission tools.
 
 ## Primary application flow

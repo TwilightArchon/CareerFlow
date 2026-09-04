@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
@@ -124,6 +125,7 @@ class WorkflowService:
         to_state: WorkflowState,
         reason_code: str,
         idempotency_key: str,
+        safe_details: dict[str, str | int | float | bool | None] | None = None,
     ) -> WorkflowEvent:
         with TRACER.start_as_current_span("workflow.step") as span:
             span.set_attribute("careerflow.run_id", str(run_id))
@@ -168,7 +170,7 @@ class WorkflowService:
                     from_state=from_state,
                     to_state=to_state,
                     reason_code=reason_code,
-                    safe_details_json="{}",
+                    safe_details_json=json.dumps(safe_details or {}, separators=(",", ":")),
                     idempotency_key=idempotency_key,
                     occurred_at=now,
                 )
@@ -189,6 +191,6 @@ class WorkflowService:
             from_state=WorkflowState(record.from_state) if record.from_state else None,
             to_state=WorkflowState(record.to_state),
             reason_code=record.reason_code,
-            safe_details={},
+            safe_details=json.loads(record.safe_details_json),
             occurred_at=record.occurred_at,
         )

@@ -1,8 +1,8 @@
 # Feature: Application Tracking and Statistics
 
-Status: foundation implemented  
+Status: local history, outcomes, filters, and aggregates implemented
 Owner: `apps/desktop` and `services/agent`  
-Last updated: 2026-08-23
+Last updated: 2026-09-03
 
 ## Purpose
 
@@ -34,9 +34,9 @@ Statistics avoid exposing raw answers, credentials, email content, or unnecessar
 
 ## Acceptance criteria
 
-- [ ] Success is impossible without confirmation evidence or explicit user correction.
+- [x] Success is impossible without confirmation evidence or explicit user correction.
 - [ ] Every failure has a stable reason code and readable explanation.
-- [ ] Aggregates match underlying event records and state transitions.
+- [x] Aggregates match underlying event records and state transitions.
 - [ ] Export and deletion cover records and linked artifacts.
 
 ## Tests and evaluations
@@ -45,4 +45,10 @@ Use event-replay tests, aggregate reconciliation, duplicate-event handling, unce
 
 ## Current implementation
 
-SQLite persists application runs and append-only workflow events. An authenticated list endpoint returns up to 100 runs ordered by most recent activity, and the desktop validates and refreshes that durable projection for its queue and Applications view. Current rows show the source URL, workflow state, update time, and per-run submission permission. Job metadata, outcomes, confirmation evidence, failure classification, filters, aggregates, export, correction, and deletion remain pending.
+SQLite persists application runs, normalized versioned job postings, append-only workflow events, and per-run field explanations. An authenticated list endpoint returns up to 100 runs ordered by most recent activity, and the desktop validates and refreshes that durable projection for its queue and Applications view. Current rows show normalized job title, company, platform, source URL, workflow state, update time, and per-run submission permission when an ingested job is linked.
+
+Safe Autofill Lab runs are persisted as synthetic applications and their scan/fill events retain only observed, approved, filled, and review-required counts. The Applications view can expand any run and load its typed field decisions on demand. Each decision shows the canonical field, deterministic rationale, filled/review/unsupported result, and no candidate value. Repeated writes for the same run, workflow step, and control update one durable explanation instead of duplicating it.
+
+The user can now explicitly record `submitted`, `failed`, `cancelled`, `abandoned`, or `outcome_uncertain` for a run. Outcome/reason combinations are schema-validated, submitted status creates a non-PII user-correction confirmation fingerprint, repeated identical writes are idempotent, and later corrections append a revision that points to the prior record. The run projection exposes only the latest outcome while the authenticated API retains the full audit history. Submitted status cannot be created without the explicit confirmation flag.
+
+The dashboard filters runs by outcome and platform and shows tracked, pending, submitted, and outcome-resolution totals. Statistics are recomputed from the latest durable outcome for each run and never depend on sampled telemetry. Automated confirmation-page/email evidence, complete workflow-generated failure classification, time-saved metrics, export, and deletion remain pending.
