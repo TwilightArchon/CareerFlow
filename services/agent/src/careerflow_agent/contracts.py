@@ -623,6 +623,7 @@ class HealthStatus(Contract):
     service: str = "careerflow-agent"
     version: str
     browser_worker_connected: bool
+    browser_worker_session_id: UUID | None = None
     database_ready: bool
     telemetry_ready: bool
 

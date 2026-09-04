@@ -30,7 +30,7 @@ Exit criterion: one local test job flows from pasted URL to prepared application
 
 ## Phase 2 — Reliable application workflow
 
-- [ ] Implement the durable application state machine, checkpoints, resume, cancel, retries, timeouts, and idempotency. (Validated transitions, append-only events, authorization, idempotency, explicit `paused` state, durable user-pause checkpoints, desktop pause/resume/cancel controls, stale-result rejection, and browser action gates are implemented; automatic process-recovery orchestration, retries, and timeouts remain.)
+- [ ] Implement the durable application state machine, checkpoints, resume, cancel, retries, timeouts, and idempotency. (Validated transitions, append-only events, authorization, idempotency, explicit `paused` state, durable user-pause and recovery checkpoints, desktop controls, stale-result rejection, browser action gates, heartbeat expiry, bounded browser-worker restart/backoff, safe replay classification, local dispatch retry, and duplicate-command result replay are implemented. Agent-service restart, durable per-action attempt/deadline records, result timeouts, and irreversible-side-effect reconciliation remain.)
 - [ ] Implement field confidence and action policies. (Initial sensitivity/source/confidence policy and tests implemented; complete field taxonomy pending.)
 - [ ] Add the human-intervention inbox with clear reasons and resume controls.
 - [ ] Add document upload, validation-error handling, multi-page navigation, and review-page verification.

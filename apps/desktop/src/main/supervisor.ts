@@ -1,11 +1,11 @@
-import { randomBytes } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { dirname, join, resolve } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 
-import { context, propagation, SpanStatusCode, trace } from '@opentelemetry/api';
+import { context, metrics, propagation, SpanStatusCode, trace } from '@opentelemetry/api';
 import { app, utilityProcess, type UtilityProcess } from 'electron';
 
 import {
@@ -36,7 +36,11 @@ import {
   type RunControlRequest,
 } from '@careerflow/contracts';
 
+import { RestartBudget } from './process-restart';
+
 const tracer = trace.getTracer('careerflow.desktop.supervisor');
+const meter = metrics.getMeter('careerflow.desktop.supervisor');
+const processRestarts = meter.createCounter('process_restarts_total');
 
 function projectRoot(start: string): string {
   let current = resolve(start);
@@ -67,6 +71,10 @@ export class ProcessSupervisor {
   private agent: ChildProcess | undefined;
   private agentStartError: Error | undefined;
   private browserWorker: UtilityProcess | undefined;
+  private browserWorkerError: Error | undefined;
+  private browserWorkerEntry: string | undefined;
+  private browserProfileDir: string | undefined;
+  private readonly browserRestartBudget = new RestartBudget();
   private stopping = false;
   private port?: number;
   private token?: string;
@@ -77,8 +85,9 @@ export class ProcessSupervisor {
       this.readiness ?? {
         status: 'starting',
         service: 'careerflow-agent',
-        version: '0.1.10',
+        version: '0.1.11',
         browserWorkerConnected: false,
+        browserWorkerSessionId: null,
         databaseReady: false,
         telemetryReady: false,
       }
@@ -88,6 +97,8 @@ export class ProcessSupervisor {
   async start(): Promise<HealthStatus> {
     this.stopping = false;
     this.agentStartError = undefined;
+    this.browserWorkerError = undefined;
+    this.browserRestartBudget.reset();
     this.port = await availablePort();
     this.token = randomBytes(32).toString('base64url');
 
@@ -135,28 +146,96 @@ export class ProcessSupervisor {
     );
 
     this.readiness = await this.waitForHealth();
-    const workerEntry = app.isPackaged
+    this.browserWorkerEntry = app.isPackaged
       ? join(app.getAppPath(), 'node_modules', '@careerflow', 'browser-worker', 'dist', 'index.js')
       : join(root!, 'packages', 'browser-worker', 'dist', 'index.js');
-    this.browserWorker = utilityProcess.fork(workerEntry, [], {
+    this.browserProfileDir = join(app.getPath('userData'), 'browser-profile');
+    this.launchBrowserWorker();
+    await delay(250);
+    this.readiness = await this.fetchHealth();
+    return this.readiness;
+  }
+
+  private launchBrowserWorker(): void {
+    if (!this.browserWorkerEntry || !this.browserProfileDir || !this.port || !this.token) {
+      throw new Error('Browser worker cannot start before the local service is configured');
+    }
+    const workerSessionId = randomUUID();
+    const worker = utilityProcess.fork(this.browserWorkerEntry, [], {
       env: {
         ...process.env,
         CAREERFLOW_BROWSER_WS_URL: `ws://127.0.0.1:${this.port}/v1/browser/ws`,
         CAREERFLOW_LOCAL_TOKEN: this.token,
-        CAREERFLOW_BROWSER_PROFILE_DIR: join(app.getPath('userData'), 'browser-profile'),
+        CAREERFLOW_BROWSER_PROFILE_DIR: this.browserProfileDir,
+        CAREERFLOW_BROWSER_WORKER_SESSION_ID: workerSessionId,
       },
       stdio: 'pipe',
       serviceName: 'CareerFlow Browser Worker',
     });
-    this.browserWorker.stdout?.on('data', (chunk: Buffer) =>
+    this.browserWorker = worker;
+    worker.stdout?.on('data', (chunk: Buffer) =>
       process.stdout.write(`[browser] ${chunk.toString()}`),
     );
-    this.browserWorker.stderr?.on('data', (chunk: Buffer) =>
+    worker.stderr?.on('data', (chunk: Buffer) =>
       process.stderr.write(`[browser] ${chunk.toString()}`),
     );
-    await delay(250);
-    this.readiness = await this.fetchHealth();
-    return this.readiness;
+    worker.once('error', (_type, location) => {
+      this.browserWorkerError = new Error(`Browser worker failed at ${location}`);
+    });
+    worker.once('exit', (code) => {
+      if (this.browserWorker !== worker) return;
+      this.browserWorker = undefined;
+      if (!this.stopping) void this.scheduleBrowserWorkerRestart(code);
+    });
+    void this.confirmBrowserWorkerConnection(worker, workerSessionId);
+  }
+
+  private async confirmBrowserWorkerConnection(
+    worker: UtilityProcess,
+    workerSessionId: string,
+  ): Promise<void> {
+    for (let attempt = 0; attempt < 50; attempt += 1) {
+      if (this.stopping || this.browserWorker !== worker) return;
+      try {
+        const observed = await this.fetchHealth();
+        this.readiness = observed;
+        if (
+          observed.browserWorkerConnected &&
+          observed.browserWorkerSessionId === workerSessionId
+        ) {
+          this.browserRestartBudget.reset();
+          this.browserWorkerError = undefined;
+          return;
+        }
+      } catch {
+        // The next bounded poll can recover from a transient local-service read failure.
+      }
+      await delay(100);
+    }
+    if (!this.stopping && this.browserWorker === worker) {
+      this.browserWorkerError = new Error('Browser worker did not reconnect within 5 seconds');
+      worker.kill();
+    }
+  }
+
+  private async scheduleBrowserWorkerRestart(exitCode: number): Promise<void> {
+    const restart = this.browserRestartBudget.claim();
+    if (!restart) {
+      this.browserWorkerError = new Error(
+        `Browser worker stopped repeatedly (last exit code ${String(exitCode)})`,
+      );
+      if (this.readiness) this.readiness = { ...this.readiness, status: 'degraded' };
+      return;
+    }
+    processRestarts.add(1, { process: 'browser_worker', attempt: restart.attempt });
+    await delay(restart.delayMs);
+    if (this.stopping || this.browserWorker) return;
+    try {
+      this.launchBrowserWorker();
+    } catch (error) {
+      this.browserWorkerError = error as Error;
+      await this.scheduleBrowserWorkerRestart(exitCode);
+    }
   }
 
   async stop(): Promise<void> {
@@ -166,16 +245,25 @@ export class ProcessSupervisor {
     this.agent?.kill('SIGTERM');
     this.agent = undefined;
     this.readiness = undefined;
+    this.browserWorkerEntry = undefined;
+    this.browserProfileDir = undefined;
   }
 
   async refreshHealth(): Promise<HealthStatus> {
     if (!this.port || !this.token) return this.health;
     try {
       this.readiness = await this.fetchHealth();
+      if (this.browserWorkerError && !this.readiness.browserWorkerConnected) {
+        this.readiness = { ...this.readiness, status: 'degraded' };
+      }
     } catch {
       this.readiness = {
         ...this.health,
-        status: this.stopping ? 'stopped' : this.agentStartError ? 'degraded' : 'starting',
+        status: this.stopping
+          ? 'stopped'
+          : this.agentStartError || this.browserWorkerError
+            ? 'degraded'
+            : 'starting',
       };
     }
     return this.readiness;

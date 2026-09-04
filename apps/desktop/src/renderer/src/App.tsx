@@ -23,8 +23,9 @@ type PlatformFilter = 'all' | NonNullable<ApplicationRun['platform']>;
 const emptyHealth: HealthStatus = {
   status: 'starting',
   service: 'careerflow-agent',
-  version: '0.1.10',
+  version: '0.1.11',
   browserWorkerConnected: false,
+  browserWorkerSessionId: null,
   databaseReady: false,
   telemetryReady: false,
 };

@@ -4,9 +4,11 @@ import asyncio
 import hashlib
 import hmac
 import json
+import time
+from collections import deque
 from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
-from typing import Annotated, cast
+from contextlib import asynccontextmanager, suppress
+from typing import Annotated, Literal, cast
 from uuid import UUID
 
 from fastapi import (
@@ -94,6 +96,7 @@ from .profile_vault import (
     ResumeAlreadyImportedError,
     SecretStore,
 )
+from .recovery import RecoveryAction, classify_recovery
 from .telemetry import configure_telemetry
 from .workflow import InvalidTransitionError, RunNotFoundError, WorkflowService
 
@@ -101,12 +104,20 @@ tracer = get_tracer("careerflow.agent.documents")
 tracking_tracer = get_tracer("careerflow.agent.application_tracking")
 tracking_meter = metrics.get_meter("careerflow.agent.application_tracking")
 OUTCOME_WRITE_REQUESTS = tracking_meter.create_counter("application_outcome_write_requests_total")
+workflow_meter = metrics.get_meter("careerflow.agent.workflow_recovery")
+WORKFLOW_RECOVERIES = workflow_meter.create_counter("workflow_recoveries_total")
+BROWSER_DISPATCH_RETRIES = workflow_meter.create_counter("browser_dispatch_retries_total")
+BROWSER_HEARTBEAT_TIMEOUTS = workflow_meter.create_counter("browser_heartbeat_timeouts_total")
 
 SYNTHETIC_FORM_URL = "https://synthetic.careerflow.invalid/application"
 SYNTHETIC_DESCRIPTION = (
     "Controlled local CareerFlow test form for deterministic scanning, policy evaluation, "
     "and supervised filling. It cannot submit data to an employer."
 )
+BROWSER_DISPATCH_ATTEMPTS = 2
+BROWSER_DISPATCH_TIMEOUT_SECONDS = 2.0
+BROWSER_HEARTBEAT_TIMEOUT_SECONDS = 15.0
+BROWSER_HEARTBEAT_CHECK_SECONDS = 5.0
 
 
 class ServiceState:
@@ -118,6 +129,9 @@ class ServiceState:
         self.profile_vault = ProfileVault(self.database, secret_store, settings.data_dir)
         self.browser_worker_connected = False
         self.browser_socket: WebSocket | None = None
+        self.browser_worker_session_id: UUID | None = None
+        self.browser_last_heartbeat: float | None = None
+        self.recovered_worker_sessions: deque[UUID] = deque(maxlen=64)
         self.telemetry_ready = (
             configure_telemetry(settings) if settings.telemetry_enabled else False
         )
@@ -129,9 +143,31 @@ class ServiceState:
                 subscriber.get_nowait()
             subscriber.put_nowait(event)
 
-    async def navigate_browser(self, run: ApplicationRun) -> None:
-        if self.browser_socket is None:
-            raise RuntimeError("Browser worker is not connected")
+    async def dispatch_browser_command(self, command: BrowserCommand) -> None:
+        payload = command.model_dump(mode="json", by_alias=True, exclude_none=True)
+        last_error: BaseException | None = None
+        for attempt in range(1, BROWSER_DISPATCH_ATTEMPTS + 1):
+            socket = self.browser_socket
+            if socket is None:
+                raise RuntimeError("Browser worker is not connected")
+            try:
+                await asyncio.wait_for(
+                    socket.send_json(payload), timeout=BROWSER_DISPATCH_TIMEOUT_SECONDS
+                )
+                return
+            except (TimeoutError, RuntimeError, OSError) as error:
+                last_error = error
+                if attempt == BROWSER_DISPATCH_ATTEMPTS:
+                    break
+                BROWSER_DISPATCH_RETRIES.add(1, {"action": command.action})
+                await asyncio.sleep(0.05)
+        raise RuntimeError(
+            f"Browser command dispatch failed after {BROWSER_DISPATCH_ATTEMPTS} attempts"
+        ) from last_error
+
+    async def navigate_browser(
+        self, run: ApplicationRun, *, idempotency_key: str | None = None
+    ) -> None:
         carrier: dict[str, str] = {}
         inject(carrier)
         command = BrowserCommand(
@@ -140,19 +176,17 @@ class ServiceState:
             envelope=ActionMetadata(
                 run_id=run.id,
                 step_id="opening_application",
-                idempotency_key=f"navigate-job-{run.id}",
+                idempotency_key=idempotency_key or f"navigate-job-{run.id}",
                 authorization_scope="navigate",
                 redaction_policy="metadata_only",
                 trace_context=TraceContext(traceparent=carrier.get("traceparent")),
             ),
         )
-        await self.browser_socket.send_json(
-            command.model_dump(mode="json", by_alias=True, exclude_none=True)
-        )
+        await self.dispatch_browser_command(command)
 
-    async def open_synthetic_form(self, run: ApplicationRun) -> None:
-        if self.browser_socket is None:
-            raise RuntimeError("Browser worker is not connected")
+    async def open_synthetic_form(
+        self, run: ApplicationRun, *, idempotency_key: str | None = None
+    ) -> None:
         carrier: dict[str, str] = {}
         inject(carrier)
         command = BrowserCommand(
@@ -160,19 +194,15 @@ class ServiceState:
             envelope=ActionMetadata(
                 run_id=run.id,
                 step_id="synthetic_form_scan",
-                idempotency_key=f"synthetic-form-scan-{run.id}",
+                idempotency_key=idempotency_key or f"synthetic-form-scan-{run.id}",
                 authorization_scope="inspect",
                 redaction_policy="metadata_only",
                 trace_context=TraceContext(traceparent=carrier.get("traceparent")),
             ),
         )
-        await self.browser_socket.send_json(
-            command.model_dump(mode="json", by_alias=True, exclude_none=True)
-        )
+        await self.dispatch_browser_command(command)
 
     async def scan_synthetic_form(self, run: ApplicationRun, idempotency_key: str) -> None:
-        if self.browser_socket is None:
-            raise RuntimeError("Browser worker is not connected")
         carrier: dict[str, str] = {}
         inject(carrier)
         command = BrowserCommand(
@@ -186,9 +216,7 @@ class ServiceState:
                 trace_context=TraceContext(traceparent=carrier.get("traceparent")),
             ),
         )
-        await self.browser_socket.send_json(
-            command.model_dump(mode="json", by_alias=True, exclude_none=True)
-        )
+        await self.dispatch_browser_command(command)
 
     async def send_browser_control(self, run: ApplicationRun, request: RunControlRequest) -> None:
         if self.browser_socket is None:
@@ -206,9 +234,119 @@ class ServiceState:
                 trace_context=TraceContext(traceparent=carrier.get("traceparent")),
             ),
         )
-        await self.browser_socket.send_json(
-            command.model_dump(mode="json", by_alias=True, exclude_none=True)
+        await self.dispatch_browser_command(command)
+
+    async def sync_browser_gate(
+        self,
+        run: ApplicationRun,
+        *,
+        action: Literal["pause", "cancel"],
+        idempotency_key: str,
+    ) -> None:
+        carrier: dict[str, str] = {}
+        inject(carrier)
+        command = BrowserCommand(
+            action=action,
+            envelope=ActionMetadata(
+                run_id=run.id,
+                step_id=f"recovery_{action}",
+                idempotency_key=idempotency_key,
+                authorization_scope="inspect",
+                redaction_policy="metadata_only",
+                trace_context=TraceContext(traceparent=carrier.get("traceparent")),
+            ),
         )
+        await self.dispatch_browser_command(command)
+
+    async def recover_browser_runs(self, worker_session_id: UUID) -> None:
+        if worker_session_id in self.recovered_worker_sessions:
+            return
+        self.recovered_worker_sessions.append(worker_session_id)
+        try:
+            recovery_counts: dict[str, int] = {}
+            for run in await self.database.list_runs(limit=1_000):
+                action = classify_recovery(run)
+                recovery_counts[action] = recovery_counts.get(action, 0) + 1
+                key = f"recovery-{worker_session_id}-{run.id}"
+                if action is RecoveryAction.IGNORE:
+                    continue
+                if action is RecoveryAction.REAPPLY_PAUSE:
+                    await self.sync_browser_gate(
+                        run, action="pause", idempotency_key=f"{key}-pause"
+                    )
+                elif action is RecoveryAction.REPLAY_NAVIGATION:
+                    await self.database.save_checkpoint(
+                        run_id=run.id,
+                        step_id="automatic_browser_recovery",
+                        state=run.state,
+                        idempotency_key=key,
+                    )
+                    await self.navigate_browser(run, idempotency_key=f"{key}-navigate")
+                elif action is RecoveryAction.REPLAY_SYNTHETIC_FORM:
+                    await self.database.save_checkpoint(
+                        run_id=run.id,
+                        step_id="automatic_browser_recovery",
+                        state=run.state,
+                        idempotency_key=key,
+                    )
+                    await self.open_synthetic_form(run, idempotency_key=f"{key}-synthetic")
+                elif action is RecoveryAction.PAUSE_FOR_REVIEW:
+                    await self.database.save_checkpoint(
+                        run_id=run.id,
+                        step_id="automatic_recovery_review",
+                        state=run.state,
+                        idempotency_key=key,
+                    )
+                    await self.workflow.transition(
+                        run_id=run.id,
+                        to_state=WorkflowState.PAUSED,
+                        reason_code="process_recovery_requires_review",
+                        idempotency_key=key,
+                        safe_details={"checkpoint_state": run.state},
+                    )
+                    updated = await self.database.get_run(run.id)
+                    if updated is not None:
+                        await self.sync_browser_gate(
+                            updated, action="pause", idempotency_key=f"{key}-pause"
+                        )
+                elif action is RecoveryAction.MARK_OUTCOME_UNCERTAIN:
+                    await self.workflow.transition(
+                        run_id=run.id,
+                        to_state=WorkflowState.OUTCOME_UNCERTAIN,
+                        reason_code="submission_interrupted_confirmation_required",
+                        idempotency_key=key,
+                    )
+                WORKFLOW_RECOVERIES.add(1, {"action": action})
+            await self.publish(
+                {
+                    "type": "workflow_recovery_complete",
+                    "worker_session_id": str(worker_session_id),
+                    "counts": recovery_counts,
+                }
+            )
+        except Exception:
+            with suppress(ValueError):
+                self.recovered_worker_sessions.remove(worker_session_id)
+            raise
+
+    def record_browser_heartbeat(self) -> None:
+        self.browser_last_heartbeat = time.monotonic()
+
+    def browser_heartbeat_expired(self, *, now: float | None = None) -> bool:
+        if self.browser_socket is None or self.browser_last_heartbeat is None:
+            return False
+        observed_now = time.monotonic() if now is None else now
+        return observed_now - self.browser_last_heartbeat > BROWSER_HEARTBEAT_TIMEOUT_SECONDS
+
+    async def monitor_browser_heartbeat(self) -> None:
+        while True:
+            await asyncio.sleep(BROWSER_HEARTBEAT_CHECK_SECONDS)
+            socket = self.browser_socket
+            if socket is None or not self.browser_heartbeat_expired():
+                continue
+            BROWSER_HEARTBEAT_TIMEOUTS.add(1)
+            with suppress(RuntimeError):
+                await socket.close(code=1012, reason="Browser worker heartbeat expired")
 
     async def handle_observed_form(
         self, *, run_id: UUID, action_id: str, observed_form: ObservedForm
@@ -253,17 +391,18 @@ class ServiceState:
             mappings=mappings,
             filled_control_ids=set(),
         )
-        await self.workflow.transition(
-            run_id=run_id,
-            to_state=WorkflowState.FILLING,
-            reason_code="synthetic_form_scanned",
-            idempotency_key=f"synthetic-scan-result-{action_id}",
-            safe_details={
-                "observed_control_count": len(observed_form.controls),
-                "approved_fill_count": len(fills),
-                "review_required_count": len(blocked),
-            },
-        )
+        if run.state is not WorkflowState.FILLING:
+            await self.workflow.transition(
+                run_id=run_id,
+                to_state=WorkflowState.FILLING,
+                reason_code="synthetic_form_scanned",
+                idempotency_key=f"synthetic-scan-result-{action_id}",
+                safe_details={
+                    "observed_control_count": len(observed_form.controls),
+                    "approved_fill_count": len(fills),
+                    "review_required_count": len(blocked),
+                },
+            )
         carrier: dict[str, str] = {}
         inject(carrier)
         command = BrowserCommand(
@@ -280,9 +419,7 @@ class ServiceState:
                 trace_context=TraceContext(traceparent=carrier.get("traceparent")),
             ),
         )
-        await self.browser_socket.send_json(
-            command.model_dump(mode="json", by_alias=True, exclude_none=True)
-        )
+        await self.dispatch_browser_command(command)
 
     async def handle_fill_result(
         self,
@@ -353,8 +490,14 @@ def create_app(
         await state.database.initialize()
         if configured.telemetry_enabled:
             SQLAlchemyInstrumentor().instrument(engine=state.database.engine.sync_engine)
-        yield
-        await state.database.close()
+        heartbeat_monitor = asyncio.create_task(state.monitor_browser_heartbeat())
+        try:
+            yield
+        finally:
+            heartbeat_monitor.cancel()
+            with suppress(asyncio.CancelledError):
+                await heartbeat_monitor
+            await state.database.close()
 
     app = FastAPI(
         title="CareerFlow Local API",
@@ -381,11 +524,16 @@ def create_app(
 
     @app.get("/v1/health", response_model=HealthStatus)
     async def health(_auth: None = Depends(require_token)) -> HealthStatus:
-        ready = state.database.ready and state.browser_worker_connected
+        ready = (
+            state.database.ready
+            and state.browser_worker_connected
+            and state.browser_worker_session_id is not None
+        )
         return HealthStatus(
             status="ready" if ready else "starting",
             version=__version__,
             browser_worker_connected=state.browser_worker_connected,
+            browser_worker_session_id=state.browser_worker_session_id,
             database_ready=state.database.ready,
             telemetry_ready=state.telemetry_ready,
         )
@@ -894,14 +1042,31 @@ def create_app(
             await websocket.close(code=4401)
             return
         await websocket.accept()
+        previous_socket = state.browser_socket
         state.browser_socket = websocket
         state.browser_worker_connected = True
+        state.browser_worker_session_id = None
+        state.record_browser_heartbeat()
+        if previous_socket is not None and previous_socket is not websocket:
+            with suppress(RuntimeError):
+                await previous_socket.close(code=1012, reason="Browser worker replaced")
         await state.publish({"type": "browser_worker", "connected": True})
         try:
             while True:
                 message = await websocket.receive_json()
                 if message.get("type") == "ready":
-                    await state.publish({"type": "browser_worker_ready"})
+                    worker_session_id = UUID(str(message["workerSessionId"]))
+                    state.browser_worker_session_id = worker_session_id
+                    state.record_browser_heartbeat()
+                    await state.publish(
+                        {
+                            "type": "browser_worker_ready",
+                            "worker_session_id": str(worker_session_id),
+                        }
+                    )
+                    await state.recover_browser_runs(worker_session_id)
+                elif message.get("type") == "heartbeat":
+                    state.record_browser_heartbeat()
                 elif message.get("type") == "form_observed":
                     run_id = UUID(str(message["runId"]))
                     await state.handle_observed_form(
@@ -977,6 +1142,11 @@ def create_app(
                             run
                             and run.state not in {WorkflowState.PAUSED, WorkflowState.CANCELLED}
                             and run.latest_outcome is None
+                            and not (
+                                result.action == "navigate"
+                                and result.ok
+                                and run.state is WorkflowState.FILLING
+                            )
                         ):
                             await state.workflow.transition(
                                 run_id=run_id,
@@ -1000,12 +1170,15 @@ def create_app(
                             "ok": result.ok,
                         }
                     )
-        except WebSocketDisconnect:
+        except (WebSocketDisconnect, RuntimeError):
             pass
         finally:
-            state.browser_worker_connected = False
-            state.browser_socket = None
-            await state.publish({"type": "browser_worker", "connected": False})
+            if state.browser_socket is websocket:
+                state.browser_worker_connected = False
+                state.browser_socket = None
+                state.browser_worker_session_id = None
+                state.browser_last_heartbeat = None
+                await state.publish({"type": "browser_worker", "connected": False})
 
     if configured.telemetry_enabled:
         FastAPIInstrumentor.instrument_app(

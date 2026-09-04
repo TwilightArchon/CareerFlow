@@ -806,6 +806,8 @@ export interface components {
     HealthStatus: {
       /** Browserworkerconnected */
       browserWorkerConnected: boolean;
+      /** Browserworkersessionid */
+      browserWorkerSessionId?: string | null;
       /** Databaseready */
       databaseReady: boolean;
       /**

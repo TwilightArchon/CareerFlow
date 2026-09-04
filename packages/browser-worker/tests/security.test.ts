@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import { CommandReplayCache } from '../src/command-replay';
 import { rejectObviousPrivateTarget, requireLoopbackWebSocketUrl } from '../src/security';
 import { classifySensitivity } from '../src/runtime';
 import { RunControlGate } from '../src/run-control';
@@ -50,5 +51,19 @@ describe('run control gate', () => {
     gate.apply('run-1', 'cancel');
     expect(() => gate.assertActionAllowed('run-1')).toThrow(/cancelled/);
     expect(() => gate.apply('run-1', 'resume')).toThrow(/cannot be resumed/);
+  });
+});
+
+describe('command replay cache', () => {
+  it('returns the original result for a repeated command and evicts oldest entries', () => {
+    const cache = new CommandReplayCache(2);
+    cache.remember('command-1', '{"ok":true}');
+    cache.remember('command-1', '{"ok":false}');
+    cache.remember('command-2', '{"ok":true}');
+
+    expect(cache.get('command-1')).toBe('{"ok":true}');
+    cache.remember('command-3', '{"ok":true}');
+    expect(cache.get('command-1')).toBeUndefined();
+    expect(cache.get('command-2')).toBe('{"ok":true}');
   });
 });

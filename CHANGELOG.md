@@ -2,6 +2,19 @@
 
 All notable CareerFlow changes are documented here.
 
+## 0.1.11 — 2026-09-03
+
+### Added
+
+- Added deterministic browser-recovery classification that replays only safe navigation or synthetic work, reapplies pause gates, and checkpoints recovery decisions.
+- Added heartbeat expiry detection and three bounded Electron browser-worker restart attempts with backoff and OpenTelemetry restart/recovery metrics.
+- Added bounded local WebSocket dispatch retries using the same command ID and a worker replay cache that returns the original result for duplicate commands without repeating the action.
+- Added recovery tests for safe replay, review-required side effects, interrupted submission, heartbeat expiry, duplicate readiness, and restart-budget exhaustion.
+
+### Security
+
+- Interrupted submission is marked `outcome_uncertain` instead of retried, while authentication, registration, email verification, and ready-to-submit states pause for human review after a process interruption.
+
 ## 0.1.10 — 2026-09-03
 
 ### Added

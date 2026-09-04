@@ -22,6 +22,7 @@ export const HealthStatusSchema = z.object({
   service: z.string(),
   version: z.string(),
   browserWorkerConnected: z.boolean(),
+  browserWorkerSessionId: z.string().uuid().nullable().default(null),
   databaseReady: z.boolean(),
   telemetryReady: z.boolean(),
 });
@@ -411,7 +412,11 @@ export const BrowserFieldFillSchema = z.object({
 });
 
 export const BrowserWorkerMessageSchema = z.discriminatedUnion('type', [
-  z.object({ type: z.literal('ready'), workerVersion: z.string() }),
+  z.object({
+    type: z.literal('ready'),
+    workerVersion: z.string(),
+    workerSessionId: z.string().uuid(),
+  }),
   z.object({ type: z.literal('heartbeat'), timestamp: z.string().datetime() }),
   z.object({
     type: z.literal('action_result'),

@@ -7,6 +7,7 @@ import {
   ApplicationStatisticsSchema,
   ApplicationRunSchema,
   BrowserCommandSchema,
+  BrowserWorkerMessageSchema,
   CandidateProfileInputSchema,
   FieldExplanationSchema,
   JobPostingSchema,
@@ -247,6 +248,22 @@ describe('BrowserCommand', () => {
     });
 
     expect(parsed.fills[0]?.canonicalPath).toBe('identity.first_name');
+  });
+});
+
+describe('BrowserWorkerMessage', () => {
+  it('requires a unique worker session on readiness', () => {
+    const parsed = BrowserWorkerMessageSchema.parse({
+      type: 'ready',
+      workerVersion: '0.1.11',
+      workerSessionId: '87c02b80-07e2-4fe1-b5d6-cb2553035ff5',
+    });
+
+    if (parsed.type !== 'ready') throw new Error('Expected a ready message');
+    expect(parsed.workerSessionId).toBe('87c02b80-07e2-4fe1-b5d6-cb2553035ff5');
+    expect(
+      BrowserWorkerMessageSchema.safeParse({ type: 'ready', workerVersion: '0.1.11' }).success,
+    ).toBe(false);
   });
 });
 

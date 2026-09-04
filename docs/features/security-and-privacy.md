@@ -63,4 +63,6 @@ Application outcomes contain a constrained status, stable reason code, revision 
 
 Run-control requests carry bounded idempotency keys and a fixed pause/resume/cancel command enum. Checkpoints contain only run identifiers, workflow state, sequence, step, idempotency, and timestamp. The worker and service both enforce paused/cancelled state, and cancel never attempts to interrupt or retry an already-submitting irreversible action.
 
+Process recovery persists only state and idempotency metadata. It never writes browser commands or candidate field values to checkpoints. A reconnect may replay reversible navigation and synthetic filling, but account, verification, and pre-submission side effects pause for inspection; an interrupted submission becomes uncertain and cannot be retried automatically. Duplicate local commands are keyed by UUID and return a bounded in-memory cached result rather than repeating execution.
+
 Public repository documentation is candidate-agnostic, and public commits use a GitHub noreply identity. Real profile data, private working notes, generated applications, and local artifacts remain outside version control.

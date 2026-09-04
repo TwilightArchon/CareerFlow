@@ -62,7 +62,7 @@ class RedactedFileSpanExporter(SpanExporter):
 
 
 def configure_telemetry(settings: Settings) -> bool:
-    resource = Resource.create({"service.name": "careerflow-agent", "service.version": "0.1.10"})
+    resource = Resource.create({"service.name": "careerflow-agent", "service.version": "0.1.11"})
     tracer_provider = TracerProvider(resource=resource)
     endpoint = settings.otel_exporter_otlp_endpoint
     if endpoint:

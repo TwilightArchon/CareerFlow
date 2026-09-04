@@ -1,6 +1,6 @@
 {
   "name": "careerflow",
-  "version": "0.1.10",
+  "version": "0.1.11",
   "private": true,
   "description": "Local-first supervised job application agent",
   "packageManager": "pnpm@10.15.1",

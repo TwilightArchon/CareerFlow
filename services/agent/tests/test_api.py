@@ -603,6 +603,148 @@ async def test_run_controls_checkpoint_pause_resume_and_cancel(
     assert [event["toState"] for event in events.json()] == ["paused", "created", "cancelled"]
 
 
+async def test_browser_dispatch_retries_same_idempotent_command(
+    client: httpx.AsyncClient,
+) -> None:
+    class FlakyBrowserSocket:
+        def __init__(self) -> None:
+            self.attempts = 0
+            self.messages: list[dict[str, object]] = []
+
+        async def send_json(self, message: dict[str, object]) -> None:
+            self.attempts += 1
+            self.messages.append(message)
+            if self.attempts == 1:
+                raise RuntimeError("transient local socket failure")
+
+    created = await client.post(
+        "/v1/runs",
+        json={
+            "job_id": str(uuid4()),
+            "candidate_profile_id": str(uuid4()),
+            "candidate_profile_version": 1,
+            "job_url": "https://example.com/jobs/retry",
+            "start_immediately": False,
+        },
+    )
+    app = client._transport.app  # type: ignore[attr-defined]
+    service = app.state.service
+    socket = FlakyBrowserSocket()
+    service.browser_socket = socket
+    run = await service.database.get_run(UUID(created.json()["id"]))
+    assert run is not None
+
+    await service.navigate_browser(run)
+
+    assert socket.attempts == 2
+    assert socket.messages[0]["commandId"] == socket.messages[1]["commandId"]
+    assert socket.messages[0]["envelope"] == socket.messages[1]["envelope"]
+
+
+async def test_browser_recovery_replays_safe_work_and_fails_closed(
+    client: httpx.AsyncClient,
+) -> None:
+    class BrowserSocket:
+        def __init__(self) -> None:
+            self.messages: list[dict[str, object]] = []
+
+        async def send_json(self, message: dict[str, object]) -> None:
+            self.messages.append(message)
+
+    app = client._transport.app  # type: ignore[attr-defined]
+    service = app.state.service
+    socket = BrowserSocket()
+    service.browser_socket = socket
+    service.browser_worker_connected = True
+
+    async def create_run(*, authorized: bool = False) -> str:
+        response = await client.post(
+            "/v1/runs",
+            json={
+                "job_id": str(uuid4()),
+                "candidate_profile_id": str(uuid4()),
+                "candidate_profile_version": 1,
+                "auto_submit_authorized": authorized,
+                "job_url": "https://example.com/jobs/recovery",
+                "start_immediately": False,
+            },
+        )
+        return str(response.json()["id"])
+
+    async def transition(run_id: str, state: str, sequence: int) -> None:
+        response = await client.post(
+            f"/v1/runs/{run_id}/transitions",
+            json={
+                "to_state": state,
+                "reason_code": "recovery_test",
+                "idempotency_key": f"recovery-transition-{run_id}-{sequence}",
+            },
+        )
+        assert response.status_code == 200
+
+    navigable_id = await create_run()
+    for sequence, state_name in enumerate(
+        ["ingesting_job", "preparing_materials", "opening_application", "filling"]
+    ):
+        await transition(navigable_id, state_name, sequence)
+
+    review_id = await create_run()
+    for sequence, state_name in enumerate(
+        ["ingesting_job", "preparing_materials", "opening_application", "authenticating"]
+    ):
+        await transition(review_id, state_name, sequence)
+
+    submitting_id = await create_run(authorized=True)
+    for sequence, state_name in enumerate(
+        [
+            "ingesting_job",
+            "preparing_materials",
+            "opening_application",
+            "filling",
+            "validating",
+            "ready_to_submit",
+            "submitting",
+        ]
+    ):
+        await transition(submitting_id, state_name, sequence)
+
+    worker_session_id = uuid4()
+    await service.recover_browser_runs(worker_session_id)
+
+    actions_by_run = {
+        str(message["envelope"]["runId"]): message["action"]  # type: ignore[index]
+        for message in socket.messages
+    }
+    assert actions_by_run[navigable_id] == "navigate"
+    assert actions_by_run[review_id] == "pause"
+    assert submitting_id not in actions_by_run
+
+    review_run = await service.database.get_run(UUID(review_id))
+    uncertain_run = await service.database.get_run(UUID(submitting_id))
+    assert review_run is not None and review_run.state.value == "paused"
+    assert uncertain_run is not None and uncertain_run.state.value == "outcome_uncertain"
+    review_checkpoint = await service.database.latest_checkpoint(UUID(review_id))
+    navigation_checkpoint = await service.database.latest_checkpoint(UUID(navigable_id))
+    assert review_checkpoint is not None and review_checkpoint.state.value == "authenticating"
+    assert navigation_checkpoint is not None and navigation_checkpoint.state.value == "filling"
+
+    message_count = len(socket.messages)
+    await service.recover_browser_runs(worker_session_id)
+    assert len(socket.messages) == message_count
+
+
+async def test_browser_heartbeat_expiry_uses_server_observation_time(
+    client: httpx.AsyncClient,
+) -> None:
+    app = client._transport.app  # type: ignore[attr-defined]
+    service = app.state.service
+    service.browser_socket = object()
+    service.browser_last_heartbeat = 100.0
+
+    assert service.browser_heartbeat_expired(now=114.9) is False
+    assert service.browser_heartbeat_expired(now=115.1) is True
+
+
 async def test_synthetic_demo_creates_durable_run_and_starts_typed_scan(
     client: httpx.AsyncClient, tmp_path: Path
 ) -> None:

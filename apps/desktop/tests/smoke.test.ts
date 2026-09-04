@@ -4,6 +4,7 @@ import type { CandidateProfileInput, ResumeFieldSuggestion } from '@careerflow/c
 
 import { applyResumeSuggestions } from '../src/renderer/src/ProfileView';
 import { defaultOutcomeReason } from '../src/renderer/src/App';
+import { RestartBudget } from '../src/main/process-restart';
 
 const existingProfile: CandidateProfileInput = {
   firstName: 'Existing',
@@ -62,5 +63,15 @@ describe('desktop foundation', () => {
     expect(defaultOutcomeReason('submitted')).toBe('user_confirmed_submitted');
     expect(defaultOutcomeReason('failed')).toBe('validation_failed');
     expect(defaultOutcomeReason('outcome_uncertain')).toBe('confirmation_missing');
+  });
+
+  it('bounds browser-worker restarts and resets after recovery', () => {
+    const budget = new RestartBudget([10, 20]);
+
+    expect(budget.claim()).toEqual({ attempt: 1, delayMs: 10 });
+    expect(budget.claim()).toEqual({ attempt: 2, delayMs: 20 });
+    expect(budget.claim()).toBeNull();
+    budget.reset();
+    expect(budget.claim()).toEqual({ attempt: 1, delayMs: 10 });
   });
 });

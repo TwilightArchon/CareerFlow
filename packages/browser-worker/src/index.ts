@@ -4,11 +4,12 @@ import WebSocket from 'ws';
 import { BrowserCommandSchema, BrowserWorkerMessageSchema } from '@careerflow/contracts';
 
 import { BrowserRuntime } from './runtime';
+import { CommandReplayCache } from './command-replay';
 import { RunControlGate } from './run-control';
 import { requireLoopbackWebSocketUrl } from './security';
 import { startTelemetry } from './telemetry';
 
-const WORKER_VERSION = '0.1.10';
+const WORKER_VERSION = '0.1.11';
 const sdk = startTelemetry();
 const tracer = trace.getTracer('careerflow-browser-worker', WORKER_VERSION);
 const meter = metrics.getMeter('careerflow-browser-worker', WORKER_VERSION);
@@ -16,14 +17,14 @@ const browserActions = meter.createCounter('browser_actions_total');
 const browserActionDuration = meter.createHistogram('browser_action_duration_ms', {
   unit: 'ms',
 });
-
 const rawUrl = process.env.CAREERFLOW_BROWSER_WS_URL;
 const token = process.env.CAREERFLOW_LOCAL_TOKEN;
 const profileDir = process.env.CAREERFLOW_BROWSER_PROFILE_DIR;
+const workerSessionId = process.env.CAREERFLOW_BROWSER_WORKER_SESSION_ID;
 
-if (!rawUrl || !token || !profileDir) {
+if (!rawUrl || !token || !profileDir || !workerSessionId) {
   throw new Error(
-    'CAREERFLOW_BROWSER_WS_URL, CAREERFLOW_LOCAL_TOKEN, and CAREERFLOW_BROWSER_PROFILE_DIR are required',
+    'CAREERFLOW_BROWSER_WS_URL, CAREERFLOW_LOCAL_TOKEN, CAREERFLOW_BROWSER_PROFILE_DIR, and CAREERFLOW_BROWSER_WORKER_SESSION_ID are required',
   );
 }
 
@@ -31,6 +32,14 @@ const url = requireLoopbackWebSocketUrl(rawUrl);
 let heartbeat: NodeJS.Timeout | undefined;
 const runtime = new BrowserRuntime(profileDir);
 const runControl = new RunControlGate();
+const commandReplay = new CommandReplayCache();
+const commandsInFlight = new Set<string>();
+
+function sendCommandResponse(commandId: string, message: unknown): void {
+  const serialized = JSON.stringify(BrowserWorkerMessageSchema.parse(message));
+  commandReplay.remember(commandId, serialized);
+  ws.send(serialized);
+}
 
 const ws = new WebSocket(url, {
   headers: { Authorization: `Bearer ${token}` },
@@ -41,6 +50,7 @@ ws.on('open', () => {
     const message = BrowserWorkerMessageSchema.parse({
       type: 'ready',
       workerVersion: WORKER_VERSION,
+      workerSessionId,
     });
     ws.send(JSON.stringify(message));
     span.setStatus({ code: SpanStatusCode.OK });
@@ -63,6 +73,13 @@ ws.on('open', () => {
 
 ws.on('message', (data) => {
   const command = BrowserCommandSchema.parse(JSON.parse(data.toString()));
+  const replay = commandReplay.get(command.commandId);
+  if (replay) {
+    ws.send(replay);
+    return;
+  }
+  if (commandsInFlight.has(command.commandId)) return;
+  commandsInFlight.add(command.commandId);
   const carrier = command.envelope.traceContext.traceparent
     ? { traceparent: command.envelope.traceContext.traceparent }
     : {};
@@ -75,58 +92,42 @@ ws.on('message', (data) => {
     try {
       if (command.action === 'pause') {
         runControl.apply(command.envelope.runId, command.action);
-        ws.send(
-          JSON.stringify(
-            BrowserWorkerMessageSchema.parse({
-              type: 'action_result',
-              actionId: command.commandId,
-              runId: command.envelope.runId,
-              action: command.action,
-              ok: true,
-            }),
-          ),
-        );
+        sendCommandResponse(command.commandId, {
+          type: 'action_result',
+          actionId: command.commandId,
+          runId: command.envelope.runId,
+          action: command.action,
+          ok: true,
+        });
       } else if (command.action === 'resume') {
         runControl.apply(command.envelope.runId, command.action);
-        ws.send(
-          JSON.stringify(
-            BrowserWorkerMessageSchema.parse({
-              type: 'action_result',
-              actionId: command.commandId,
-              runId: command.envelope.runId,
-              action: command.action,
-              ok: true,
-            }),
-          ),
-        );
+        sendCommandResponse(command.commandId, {
+          type: 'action_result',
+          actionId: command.commandId,
+          runId: command.envelope.runId,
+          action: command.action,
+          ok: true,
+        });
       } else if (command.action === 'cancel') {
         runControl.apply(command.envelope.runId, command.action);
-        ws.send(
-          JSON.stringify(
-            BrowserWorkerMessageSchema.parse({
-              type: 'action_result',
-              actionId: command.commandId,
-              runId: command.envelope.runId,
-              action: command.action,
-              ok: true,
-            }),
-          ),
-        );
+        sendCommandResponse(command.commandId, {
+          type: 'action_result',
+          actionId: command.commandId,
+          runId: command.envelope.runId,
+          action: command.action,
+          ok: true,
+        });
       } else if (command.action === 'navigate' && command.url) {
         runControl.assertActionAllowed(command.envelope.runId);
         const pageStateHash = await runtime.navigate(command.url);
-        ws.send(
-          JSON.stringify(
-            BrowserWorkerMessageSchema.parse({
-              type: 'action_result',
-              actionId: command.commandId,
-              runId: command.envelope.runId,
-              action: command.action,
-              ok: true,
-              pageStateHash,
-            }),
-          ),
-        );
+        sendCommandResponse(command.commandId, {
+          type: 'action_result',
+          actionId: command.commandId,
+          runId: command.envelope.runId,
+          action: command.action,
+          ok: true,
+          pageStateHash,
+        });
       } else if (command.action === 'open_synthetic_form' || command.action === 'scan') {
         runControl.assertActionAllowed(command.envelope.runId);
         const observedForm =
@@ -134,16 +135,12 @@ ws.on('message', (data) => {
             ? await runtime.openSyntheticForm()
             : await runtime.scanCurrentForm();
         span.setAttribute('careerflow.browser.control_count', observedForm.controls.length);
-        ws.send(
-          JSON.stringify(
-            BrowserWorkerMessageSchema.parse({
-              type: 'form_observed',
-              actionId: command.commandId,
-              runId: command.envelope.runId,
-              observedForm,
-            }),
-          ),
-        );
+        sendCommandResponse(command.commandId, {
+          type: 'form_observed',
+          actionId: command.commandId,
+          runId: command.envelope.runId,
+          observedForm,
+        });
       } else if (command.action === 'fill') {
         runControl.assertActionAllowed(command.envelope.runId);
         const filledMappings = await runtime.fillApprovedFields(
@@ -153,19 +150,15 @@ ws.on('message', (data) => {
         const observedForm = await runtime.scanCurrentForm();
         span.setAttribute('careerflow.browser.filled_count', filledMappings.length);
         span.setAttribute('careerflow.browser.blocked_count', command.blockedMappings.length);
-        ws.send(
-          JSON.stringify(
-            BrowserWorkerMessageSchema.parse({
-              type: 'fill_result',
-              actionId: command.commandId,
-              runId: command.envelope.runId,
-              ok: true,
-              pageStateHash: observedForm.pageStateHash,
-              filledMappings,
-              blockedMappings: command.blockedMappings,
-            }),
-          ),
-        );
+        sendCommandResponse(command.commandId, {
+          type: 'fill_result',
+          actionId: command.commandId,
+          runId: command.envelope.runId,
+          ok: true,
+          pageStateHash: observedForm.pageStateHash,
+          filledMappings,
+          blockedMappings: command.blockedMappings,
+        });
       } else {
         throw new Error(`Unsupported browser command: ${command.action}`);
       }
@@ -196,8 +189,9 @@ ws.on('message', (data) => {
                   ? 'scan_failed'
                   : 'navigation_failed',
             };
-      ws.send(JSON.stringify(BrowserWorkerMessageSchema.parse(failedMessage)));
+      sendCommandResponse(command.commandId, failedMessage);
     } finally {
+      commandsInFlight.delete(command.commandId);
       const attributes = { action: command.action, result };
       browserActions.add(1, attributes);
       browserActionDuration.record(performance.now() - startedAt, attributes);

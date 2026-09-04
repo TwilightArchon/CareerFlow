@@ -989,6 +989,18 @@
             "title": "Browserworkerconnected",
             "type": "boolean"
           },
+          "browserWorkerSessionId": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Browserworkersessionid"
+          },
           "databaseReady": {
             "title": "Databaseready",
             "type": "boolean"
@@ -1755,7 +1767,7 @@
   },
   "info": {
     "title": "CareerFlow Local API",
-    "version": "0.1.10"
+    "version": "0.1.11"
   },
   "openapi": "3.1.0",
   "paths": {
